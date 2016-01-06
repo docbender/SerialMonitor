@@ -1,6 +1,8 @@
 # SerialMonitor
 Program is simple piece of software designed for monitoring data on serial port. Time between received data messages is displayed (in miliseconds). In addition to the printing on the screen it allows write everything (or just communication) to a specified file.
 
+Program is written in C# so .NET (in version 3.5) is necessary.
+
 ![](https://github.com/docbender/SerialMonitor/blob/master/img/SM1.png)
 
 Program has also feature that allows answer to sender for specific message. This could be used for simple simulation of some device. To use this feature it is necessary to prepare file with pairs ask/answer. In file first(odd) line represent ask and second(even) line answer. File can contain several pairs ask/answer which can be separated by empty lines (not necessary). File example:
