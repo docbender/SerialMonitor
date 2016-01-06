@@ -100,14 +100,15 @@ namespace SerialMonitor
          arg = arguments.GetArgument("logfile");
          if(arg.Enabled)
          {
-            logfile = true;
             if(arg.Parameter.Length == 0)
             {
-               logFilename = "log_" + DateTime.Now.ToString("yyyy-MM-dd_HH:mm:ss") +".txt";
+               logFilename = "log_" + DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss") +".txt";
                consoleWriteLine("Warning: Log file name not specified. Used " + logFilename);
             }
             else
                logFilename = arg.Parameter;
+
+            logfile = true;
          }
          arg = arguments.GetArgument("logincomingonly");
          if(arg.Enabled)
@@ -115,7 +116,7 @@ namespace SerialMonitor
             if(!logfile)
             {
                logfile = true;
-               logFilename = "log_" + DateTime.Now.ToString("yyyy-MM-dd_HH:mm:ss") +".txt";
+               logFilename = "log_" + DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss") +".txt";
                consoleWriteLine("Warning: Parameter logfile not specified. Log enabled to the file: " + logFilename);
                logfile = true;
             }
@@ -126,8 +127,22 @@ namespace SerialMonitor
          {
             //check path
             string path = System.IO.Path.GetDirectoryName(logFilename);
-            if(!System.IO.Directory.Exists(path))
-               System.IO.Directory.CreateDirectory(path);
+            if(path.Length == 0)
+               logFilename = System.IO.Directory.GetCurrentDirectory() + "\\" + logFilename;
+            else
+            {
+               if(!System.IO.Directory.Exists(path))
+                  System.IO.Directory.CreateDirectory(path);
+            }
+
+            if(!isFileNameValid(logFilename))
+            {
+               Console.WriteLine("\nPress [Enter] to exit");
+               Console.ReadLine();
+
+               return;
+            }
+
             //assign file to listener
             if(Trace.Listeners["Default"] is DefaultTraceListener)
                ((DefaultTraceListener)Trace.Listeners["Default"]).LogFileName = logFilename;
@@ -141,7 +156,7 @@ namespace SerialMonitor
          }
          catch(System.IO.IOException)
          {
-            consoleWriteLine("Cannot open port " + port.PortName);
+            consoleWriteError("Cannot open port " + port.PortName);
             consoleWriteLine("Available ports:");
             consoleWriteLine(string.Join(",", SerialPort.GetPortNames()));
             
@@ -153,7 +168,7 @@ namespace SerialMonitor
          catch(Exception ex)
          {
             consoleWriteLine(ex.ToString());
-            consoleWriteLine("Cannot open port " + port.PortName);
+            consoleWriteError("Cannot open port " + port.PortName);
             consoleWriteLine("Available ports:");
             consoleWriteLine(string.Join(",", SerialPort.GetPortNames()));
 
@@ -167,7 +182,16 @@ namespace SerialMonitor
 
          Argument repeatfile = arguments.GetArgument("repeatfile");
          if(repeatfile.Enabled)
+         {
+            if(!isFileNameValid(repeatfile.Parameter))
+            {
+               Console.WriteLine("\nPress [Enter] to exit");
+               Console.ReadLine();
+
+               return;
+            }
             PrepareRepeatFile(repeatfile.Parameter);
+         }
 
 
          while(port.IsOpen)
@@ -213,6 +237,36 @@ namespace SerialMonitor
                }
             }
          }
+      }
+
+      /// <summary>
+      /// Validating file name(path)
+      /// </summary>
+      /// <param name="filePath"></param>
+      /// <returns></returns>
+      private static bool isFileNameValid(string filePath)
+      {
+         foreach(char c in System.IO.Path.GetInvalidPathChars())
+         {
+            if(filePath.Contains(c))
+            {
+               consoleWriteError("File name {0} contains invalid character [{1}]. Enter right file name.", filePath, c);
+
+               return false;
+            }
+         }
+
+         foreach(char c in System.IO.Path.GetInvalidFileNameChars())
+         {
+            if(System.IO.Path.GetFileName(filePath).Contains(c))
+            {
+               consoleWriteError("File name {0} contains invalid character [{1}]. Enter right file name.", filePath, c);
+
+               return false;
+            }
+         }
+
+         return true;
       }
 
       /// <summary>

@@ -2,3 +2,5 @@
 /SerialMonitor/bin/Debug
 /SerialMonitor/SerialMonitor.csproj.user
 /SerialMonitor.suo
+/SerialMonitor/bin/Release
+/SerialMonitor/obj/Release

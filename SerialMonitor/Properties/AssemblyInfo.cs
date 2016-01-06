@@ -6,11 +6,11 @@ using System.Runtime.InteropServices;
 // set of attributes. Change these attribute values to modify the information
 // associated with an assembly.
 [assembly: AssemblyTitle("SerialMonitor")]
-[assembly: AssemblyDescription("erial port monitor")]
+[assembly: AssemblyDescription("serial port monitor")]
 [assembly: AssemblyConfiguration("")]
-[assembly: AssemblyCompany("Vita")]
+[assembly: AssemblyCompany("Vita Tucek")]
 [assembly: AssemblyProduct("SerialMonitor")]
-[assembly: AssemblyCopyright("Copyright © Vita 2015")]
+[assembly: AssemblyCopyright("Copyright © Vita Tucek 2015")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
 
