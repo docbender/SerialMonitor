@@ -572,7 +572,7 @@ namespace SerialMonitor
       /// <param name="parameters"></param>
       private static void consoleWrite(string message, params object[] parameters)
       {
-         consoleWriteLine(message, parameters);
+         Console.Write(message, parameters);
 
          if(logfile && !logincomingonly)
             Trace.Write(string.Format(message, parameters));
