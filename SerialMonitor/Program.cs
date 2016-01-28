@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text;
 using System.IO.Ports;
 using System.Threading;
@@ -29,13 +28,13 @@ namespace SerialMonitor
       /// <param name="args"></param>
       static void Main(string[] args)
       {
-         consoleWriteLine("SerialMonitor v.1.0.0");
+         consoleWriteLine("SerialMonitor v.1.1.0");
 
-         string portName = "COM1";
+         string portName = IsRunningOnMono() ? "/dev/ttyS1" : "COM1";
 
          if(args.Length > 0)
          {
-            if(args[0].Equals("-?") || args[0].Equals("-?") || args[0].Equals("?"))
+            if(args[0].Equals("-?") || args[0].Equals("-help") || args[0].Equals("--help") || args[0].Equals("?") || args[0].Equals("/?"))
             {
                printHelp();
                Console.WriteLine("\nPress [Enter] to exit");
@@ -91,9 +90,12 @@ namespace SerialMonitor
 
          SerialPort port = new SerialPort(portName, baudrate, parity, dataBits, stopBits);
 
+#if __MonoCS__
+#else
          port.DataReceived += new SerialDataReceivedEventHandler(port_DataReceived);
          port.ErrorReceived += new SerialErrorReceivedEventHandler(port_ErrorReceived);
          port.PinChanged += new SerialPinChangedEventHandler(port_PinChanged);
+#endif
 
 
          //log option
@@ -193,10 +195,36 @@ namespace SerialMonitor
             PrepareRepeatFile(repeatfile.Parameter);
          }
 
+#if __MonoCS__
+         SerialPinChange _pinsStatesNow = 0;
+         SerialPinChange _pinsStatesOld = 0;
+#endif
+
 
          while(port.IsOpen)
          {
+#if __MonoCS__
+            if(port.BytesToRead > 0)
+               port_DataReceived(port, null);
+            else
+            {
+               _pinsStatesNow = (SerialPinChange)(Convert.ToInt32(port.CtsHolding) * ((int)SerialPinChange.CtsChanged) 
+                  | Convert.ToInt32(port.CDHolding) * ((int)SerialPinChange.CDChanged) 
+                  | Convert.ToInt32(port.DsrHolding) * ((int)SerialPinChange.DsrChanged) 
+                  | Convert.ToInt32(port.BreakState) * ((int)SerialPinChange.Break)); 
+
+               if(_pinsStatesNow != _pinsStatesOld)
+               {
+                  SerialPinChange _pinsStatesChange = _pinsStatesNow ^ _pinsStatesOld;
+
+                  port_PinChanged(port, _pinsStatesChange);
+                  _pinsStatesOld = _pinsStatesNow;
+               }
+               Thread.Sleep(100);
+            }
+#else
             Thread.Sleep(100);
+#endif
 
             if(Console.KeyAvailable)
             {
@@ -248,7 +276,7 @@ namespace SerialMonitor
       {
          foreach(char c in System.IO.Path.GetInvalidPathChars())
          {
-            if(filePath.Contains(c))
+            if(filePath.Contains(c.ToString()))
             {
                consoleWriteError("File name {0} contains invalid character [{1}]. Enter right file name.", filePath, c);
 
@@ -258,7 +286,7 @@ namespace SerialMonitor
 
          foreach(char c in System.IO.Path.GetInvalidFileNameChars())
          {
-            if(System.IO.Path.GetFileName(filePath).Contains(c))
+            if(System.IO.Path.GetFileName(filePath).Contains(c.ToString()))
             {
                consoleWriteError("File name {0} contains invalid character [{1}]. Enter right file name.", filePath, c);
 
@@ -398,6 +426,16 @@ namespace SerialMonitor
          }
       }
 
+ 
+#if __MonoCS__  
+      /// <summary>
+      /// Event on serial port "pin was changed"
+      /// </summary>
+      /// <param name="sender"></param>
+      /// <param name="pinsStatesChange"></param>    
+      static void port_PinChanged(object sender, SerialPinChange pinsStatesChange)
+      {
+#else
       /// <summary>
       /// Event on serial port "pin was changed"
       /// </summary>
@@ -405,9 +443,13 @@ namespace SerialMonitor
       /// <param name="e"></param>
       static void port_PinChanged(object sender, SerialPinChangedEventArgs e)
       {
+         SerialPinChange pinsStatesChange = e.EventType;
+#endif
          SerialPort port = ((SerialPort)sender);
          Console.ForegroundColor = ConsoleColor.Cyan;
-         consoleWriteLine("Pin {0} changed", e.EventType.ToString());
+
+         //TODO: change enumerator SerialPinChange printing???
+         consoleWriteLine("Pin {0} changed", pinsStatesChange.ToString());
 
          writePinState("RTS", port.RtsEnable);
          writePinState("CTS", port.CtsHolding);
@@ -648,6 +690,17 @@ namespace SerialMonitor
          Console.WriteLine("Sended data");
          Console.ForegroundColor = ConsoleColor.Red;
          Console.WriteLine("Error");
+
+         Console.ResetColor();
+      }
+
+      /// <summary>
+      /// Check Mono runtime
+      /// </summary>
+      /// <returns></returns>
+      public static bool IsRunningOnMono()
+      {
+         return Type.GetType("Mono.Runtime") != null;
       }
    }
 }
