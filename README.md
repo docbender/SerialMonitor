@@ -1,9 +1,9 @@
 # SerialMonitor
-Program is simple piece of software designed for serial port data monitoring together with the possibility to automatically reply to sender. Windows and also Linux are supported. Program isn't serial port sniffer so can't monitor port that is already open by another program.
+Program is simple piece of software designed for serial port data monitoring together with the possibility to automatically reply to sender. 
 
 Time between received data messages is displayed (in miliseconds). In addition to the printing on the screen it allows write everything (or just communication) to a specified file.
 
-Program is written in C# so .NET (version 2.0) or Mono is necessary.
+Windows and also Linux are supported. Program isn't serial port sniffer so can't monitor port that is already open by another program. Program is written in C# so .NET (version 2.0) or Mono is necessary.
 
 ![](https://github.com/docbender/SerialMonitor/blob/master/img/SM1.png)
 
