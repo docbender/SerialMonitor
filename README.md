@@ -21,7 +21,7 @@ Program has also feature that allows answer to sender for specific message. This
 Data in file can be written in hex format (0x leading) or ASCII format. Selected format must be used through whole file.
 
 ##Usage
-Program as commandline program support some parameters. First one (most important) PortName that represent port to open (ex. COM3). When program is started without parameters port COM1 with default parameters is used.
+Program as commandline program support some parameters. First one (most important) PortName that represent port to open (ex. COM3 or /dev/ttyS1). When program is started without parameters port COM1 with default parameters is used.
 
 **serialmonitor PortName [switch parameter]**
 
@@ -38,6 +38,7 @@ Switches:
 Example:
 
     serialmonitor COM1
+    serialmonitor /dev/ttyS1 -baudrate 57600
     serialmonitor COM1 -baudrate 57600 -parity odd -databits 7 -stopbits 1.5
     serialmonitor COM83 -baudrate 19200 -repeatfile protocol.txt
 
