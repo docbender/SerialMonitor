@@ -12,7 +12,7 @@ namespace SerialMonitor
    class Program
    {
       static ArgumentCollection arguments = new ArgumentCollection(new string[] { "baudrate", "parity", "databits", "stopbits", 
-         "repeatfile", "logfile", "logincomingonly", "showascii" });
+         "repeatfile", "logfile", "logincomingonly", "showascii", "notime", "gaptolerance" });
       static long lastTimeReceved = 0;
       static bool repeaterEnabled = false;
       static bool repeaterUseHex = false;
@@ -21,6 +21,9 @@ namespace SerialMonitor
       static bool logfile = false;
       static bool logincomingonly = false;
       static string logFilename = "";
+      static bool noTime = false;
+      static int gapTolerance = 0;
+      static bool gapToleranceEnable = false;
 
       /// <summary>
       /// Main loop
@@ -28,7 +31,7 @@ namespace SerialMonitor
       /// <param name="args"></param>
       static void Main(string[] args)
       {
-         consoleWriteLine("SerialMonitor v.1.1.0");
+         consoleWriteLine("SerialMonitor v.1.2.0");
 
          string portName = IsRunningOnMono() ? "/dev/ttyS1" : "COM1";
 
@@ -38,16 +41,27 @@ namespace SerialMonitor
             {
                printHelp();
                Console.WriteLine("\nPress [Enter] to exit");
-               Console.ReadLine();               
+               Console.ReadLine();
                return;
             }
             else
                portName = args[0];
          }
+         else
+         {
+            string[] savedArgs = Config.Load();
+
+            if(savedArgs!=null)
+            {
+               portName = savedArgs[0];
+               args = savedArgs;
+            }
+         }
 
          arguments.Parse(args);
 
          showAscii = arguments.GetArgument("showascii").Enabled;
+         noTime = arguments.GetArgument("notime").Enabled;
 
          int baudrate = 9600;
          Parity parity = Parity.None;
@@ -125,6 +139,19 @@ namespace SerialMonitor
             logincomingonly = true;
          }
 
+         //gap argument
+         arg = arguments.GetArgument("gaptolerance");
+         if(arg.Enabled)
+         {
+            int.TryParse(arg.Parameter, out gapTolerance);
+
+            if(gapTolerance == 0)
+               consoleWriteLine("Warning: Parameter gaptolerance has invalid argument. Gap tolerance must be greater than zero.");
+            else
+               gapToleranceEnable = true;
+         }
+
+
          if(logfile)
          {
             //check path
@@ -150,6 +177,14 @@ namespace SerialMonitor
                ((DefaultTraceListener)Trace.Listeners["Default"]).LogFileName = logFilename;
          }
 
+         if(args.Length > 0)
+         {
+            if(Config.Save(args))
+               consoleWriteLine("Program parameters have been saved. Will be used next time you start program.");
+            else
+               consoleWriteLine("Warning: Program parameters cannot be saved.");
+         }
+
          consoleWriteLine("Opening port {0}: baudrate={1}b/s, parity={2}, databits={3}, stopbits={4}", port.PortName, port.BaudRate.ToString(), port.Parity.ToString(), port.DataBits.ToString(), port.StopBits.ToString());
 
          try
@@ -159,7 +194,7 @@ namespace SerialMonitor
          catch(System.IO.IOException)
          {
             consoleWriteError("Cannot open port " + port.PortName);
-            consoleWriteLine("Available ports:");
+            consoleWriteLine("Available ports: ");
             consoleWriteLine(string.Join(",", SerialPort.GetPortNames()));
             
             Console.WriteLine("\nPress [Enter] to exit");
@@ -234,6 +269,14 @@ namespace SerialMonitor
                {
                   port.Close();
                   return;
+               }
+               else if(line.Equals("help"))
+               {
+                  printHelp();
+               }
+               else if(line.Equals("pause"))
+               {
+
                }
                else if(line.StartsWith("send"))
                {
@@ -508,17 +551,47 @@ namespace SerialMonitor
          }
 
          TimeSpan time = DateTime.Now.TimeOfDay;
+         bool applyGapTolerance = false;
+
+         //print time since last receive only if not disabled
          if(lastTimeReceved > 0)
          {
             Console.ForegroundColor = ConsoleColor.Magenta;
-            consoleWriteLineCommunication("+" + ((double)(time.Ticks - lastTimeReceved) / 10000).ToString("F3"));
+
+            double sinceLastReceive = ((double)(time.Ticks - lastTimeReceved) / 10000);
+            applyGapTolerance = (gapToleranceEnable && sinceLastReceive <= gapTolerance);
+
+            if(!noTime && (!gapToleranceEnable || !applyGapTolerance))
+               consoleWriteCommunication("\n+" + sinceLastReceive.ToString("F3") + " ms");
          }
 
+         //Write to output
          Console.ForegroundColor = ConsoleColor.Yellow;
+         string line = "";
+
          if(showAscii)
-            consoleWriteLineCommunication(time.ToString() + " " + ASCIIEncoding.ASCII.GetString(incoming));
+         {
+            if(noTime || applyGapTolerance)
+               line = ASCIIEncoding.ASCII.GetString(incoming);
+            else
+               line = time.ToString() + " " + ASCIIEncoding.ASCII.GetString(incoming);
+         }
          else
-            consoleWriteLineCommunication(time.ToString() + " " + string.Join(" ", Array.ConvertAll(incoming, x => "0x" + x.ToString("X2"))));
+         {
+            if(noTime || applyGapTolerance)
+               line = string.Join(" ", Array.ConvertAll(incoming, x => "0x" + x.ToString("X2")));
+            else
+               line = time.ToString() + " " + string.Join(" ", Array.ConvertAll(incoming, x => "0x" + x.ToString("X2")));              
+         }
+
+         if(applyGapTolerance)
+            consoleWriteCommunication(line);
+         else
+         {
+            consoleWriteCommunication("\n");
+            consoleWriteCommunication(line);
+         }
+         
 
          lastTimeReceved = time.Ticks;
 
@@ -565,7 +638,10 @@ namespace SerialMonitor
                   data[i] = Convert.ToByte(answer.Substring(2 * i, 2), 16);
                }
 
-               consoleWriteLineCommunication(DateTime.Now.TimeOfDay.ToString() + " " + string.Join(" ", Array.ConvertAll(data, x => "0x" + x.ToString("X2"))));
+               if(noTime)
+                  consoleWriteCommunication(string.Join("\n ", Array.ConvertAll(data, x => "0x" + x.ToString("X2"))));
+               else
+                  consoleWriteCommunication("\n" + DateTime.Now.TimeOfDay.ToString() + " " + string.Join(" ", Array.ConvertAll(data, x => "0x" + x.ToString("X2"))));
 
                return data;
             }
@@ -582,7 +658,11 @@ namespace SerialMonitor
             {
                string answer = repeaterMap[ask];
 
-               consoleWriteLineCommunication(DateTime.Now.TimeOfDay.ToString() + " " + answer);
+               if(noTime)
+                  consoleWriteCommunication("\n" + answer);
+               else
+                  consoleWriteCommunication("\n" + DateTime.Now.TimeOfDay.ToString() + " " + answer);
+
                return ASCIIEncoding.ASCII.GetBytes(answer);
             }
             else
@@ -590,7 +670,6 @@ namespace SerialMonitor
                consoleWriteLine("Repeater: Unknown ask");
             }
          }
-
 
          return null;
       }
@@ -638,6 +717,19 @@ namespace SerialMonitor
       /// </summary>
       /// <param name="message"></param>
       /// <param name="parameters"></param>
+      private static void consoleWriteCommunication(string message, params object[] parameters)
+      {
+         consoleWrite(message, parameters);
+
+         if(logfile)
+            Trace.Write(string.Format(message, parameters));
+      }
+
+      /// <summary>
+      /// Print line that is involved in communication
+      /// </summary>
+      /// <param name="message"></param>
+      /// <param name="parameters"></param>
       private static void consoleWriteLineCommunication(string message, params object[] parameters)
       {
          consoleWriteLine(message, parameters);
@@ -663,6 +755,8 @@ namespace SerialMonitor
          Console.WriteLine("-logfile {file name}: set file name for log into that file");
          Console.WriteLine("-logincomingonly: log into file would be only incoming data");
          Console.WriteLine("-showascii: communication would be show in ASCII format (otherwise HEX is used)");
+         Console.WriteLine("-notime: time information about incoming data would not be printed");
+         Console.WriteLine("-gaptolerance {time gap in ms}: messages received within specified time gap will be printed together");
 
          Console.WriteLine("");
          Console.WriteLine("Example: serialmonitor COM1");
