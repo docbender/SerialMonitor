@@ -933,6 +933,7 @@ namespace SerialMonitor
          consoleWriteLineNoTrace("-showascii: communication would be show in ASCII format (otherwise HEX is used)");
          consoleWriteLineNoTrace("-notime: time information about incoming data would not be printed");
          consoleWriteLineNoTrace("-gaptolerance {time gap in ms}: messages received within specified time gap will be printed together");
+         consoleWriteLineNoTrace("-continuousmode: start program in standart console mode (scrolling list). Not with primitive text GUI");         
 
          consoleWriteLineNoTrace("");
          consoleWriteLineNoTrace("Example: serialmonitor COM1");
