@@ -21,7 +21,7 @@ namespace SerialMonitor
       class Line
       {
          public string Text;
-         public ConsoleColor Color;         
+         public ConsoleColor Color;
 
          public Line(string text, ConsoleColor color)
          {
@@ -32,7 +32,7 @@ namespace SerialMonitor
 
       static List<Line> Messages;
       static object lockobj;
-      static int originalheight = 0;
+      static int originalheight = 0, originalwidth = 0;
       static bool Service = false;
       static ConsoleColor DefaultFore = ConsoleColor.Gray;
 
@@ -54,21 +54,30 @@ namespace SerialMonitor
 
          Console.SetCursorPosition(0, 0);
 
-         Console.WriteLine("+" + new string('-', 10) + "+" + new string('-', 13) + "+" + new string('-', 17) + "+" + new string('-', 10) + "+" + new string('-', 24) + "+");
-         for(int i=1;i<3;i++)
+         if(Console.WindowWidth < 20)
+         {
+            Console.WriteLine("Window is too small!!!!");
+            return;
+         }
+
+         int rightSpaceLeft = Console.WindowWidth - 10 - 13 - 17 - 10 - 6;
+         if(rightSpaceLeft < 0)
+            rightSpaceLeft = 0;
+         Console.WriteLine("+" + new string('-', 10) + "+" + new string('-', 13) + "+" + new string('-', 17) + "+" + new string('-', 10) + "+" + new string('-', rightSpaceLeft) + "+");
+         for(int i = 1;i < 3;i++)
          {
             Console.SetCursorPosition(0, i);
             Console.Write("|");
-            Console.SetCursorPosition(79, i);
+            Console.SetCursorPosition(Console.WindowWidth - 1, i);
             Console.Write("|");
          }
-         Console.WriteLine("+" + new string('-', 10) + "+" + new string('-', 13) + "+" + new string('-', 17) + "+" + new string('-', 10) + "+" + new string('-', 24) + "+");
+         Console.WriteLine("+" + new string('-', 10) + "+" + new string('-', 13) + "+" + new string('-', 17) + "+" + new string('-', 10) + "+" + new string('-', rightSpaceLeft) + "+");
 
          Console.SetCursorPosition(0, 4);
-         Console.Write("|" + new string(' ', 78) + "|");
+         Console.Write("|" + new string(' ', Console.WindowWidth - 2) + "|");
          Console.SetCursorPosition(0, 5);
-         Console.Write("|" + new string(' ', 78) + "|");
-         Console.WriteLine("+" + new string('-', 78) + "+");
+         Console.Write("|" + new string(' ', Console.WindowWidth - 2) + "|");
+         Console.WriteLine("+" + new string('-', Console.WindowWidth - 2) + "+");
 
          Console.SetCursorPosition(2, 1);
          Console.Write("F1 help  | F2 no print | F4 close/resume |          |");
@@ -78,7 +87,7 @@ namespace SerialMonitor
          Console.SetCursorPosition(Console.WindowWidth - 16, 1);
          Console.Write(Application.ProductName);
          Console.SetCursorPosition(Console.WindowWidth - 14, 2);
-         Console.Write("v." + Application.ProductVersion.Substring(0, Application.ProductVersion.Length-2));
+         Console.Write("v." + Application.ProductVersion.Substring(0, Application.ProductVersion.Length - 2));
 
          WritePortStatus("", false, 0);
          WritePinStatus(-1, -1, -1, -1, -1, -1);
@@ -86,6 +95,7 @@ namespace SerialMonitor
          Console.SetCursorPosition(0, 6);
 
          originalheight = Console.WindowHeight;
+         originalwidth = Console.WindowWidth;
       }
 
       public static void WritePortStatus(string port, bool isOpen, int baudrate)
@@ -150,43 +160,46 @@ namespace SerialMonitor
             {
                string[] lines = msg.Split('\n');
 
-               for(int i=0;i<lines.Length;i++)
+               for(int i = 0;i < lines.Length;i++)
                {
                   string l = lines[i];
 
-                  Messages[Messages.Count-1].Text += l;
-                  Messages[Messages.Count-1].Color = activeColor;
+                  Messages[Messages.Count - 1].Text += l;
+                  Messages[Messages.Count - 1].Color = activeColor;
 
-                  if(i<lines.Length-1)
+                  if(i < lines.Length - 1)
                      Messages.Add(new Line("", activeColor));
                }
             }
             else
             {
-               Messages[Messages.Count-1].Text += msg;
-               Messages[Messages.Count-1].Color = activeColor;
+               Messages[Messages.Count - 1].Text += msg;
+               Messages[Messages.Count - 1].Color = activeColor;
             }
 
-            int rows = Console.WindowHeight - 7-1;
+            int rows = Console.WindowHeight - 7 - 1;
 
             if(rows <= 0)
                return;
 
-            if(originalheight != Console.WindowHeight)
+            if(originalheight != Console.WindowHeight || originalwidth != Console.WindowWidth)
             {
                Console.Clear();
                Borders();
             }
 
             if(Messages.Count > rows)
-               Messages.RemoveRange(0, Messages.Count-rows);
+               Messages.RemoveRange(0, Messages.Count - rows);
 
-            for(int i=0;i<Messages.Count;i++)
+            for(int i = 0;i < Messages.Count;i++)
             {
-               Console.SetCursorPosition(0, 7+i);
+               Console.SetCursorPosition(0, 7 + i);
 
                Console.ForegroundColor = Messages[i].Color;
-               Console.Write(Messages[i].Text + new string(' ', Console.WindowWidth - Messages[i].Text.Length));
+               if(Console.WindowWidth >= Messages[i].Text.Length)
+                  Console.Write(Messages[i].Text + new string(' ', Console.WindowWidth - Messages[i].Text.Length));
+               else
+                  Console.Write(Messages[i].Text);
             }
          }
       }
@@ -195,20 +208,20 @@ namespace SerialMonitor
       {
          if(moveBy > 0)
          {
-            Messages[Messages.Count-1].Text += new string(' ', moveBy);
+            Messages[Messages.Count - 1].Text += new string(' ', moveBy);
          }
          else if(moveBy < 0)
          {
-            if(Messages[Messages.Count-1].Text.Length + moveBy >= 0)
+            if(Messages[Messages.Count - 1].Text.Length + moveBy >= 0)
             {
-               Messages[Messages.Count-1].Text = Messages[Messages.Count-1].Text.Substring(0, Messages[Messages.Count-1].Text.Length + moveBy);
+               Messages[Messages.Count - 1].Text = Messages[Messages.Count - 1].Text.Substring(0, Messages[Messages.Count - 1].Text.Length + moveBy);
             }
          }
       }
 
       public static void CursorLeftReset()
       {
-         Messages[Messages.Count-1].Text = "";
+         Messages[Messages.Count - 1].Text = "";
       }
    }
 }

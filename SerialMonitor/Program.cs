@@ -279,7 +279,7 @@ namespace SerialMonitor
             {
                port.Close();
                exit = true;
-               break;
+               return;
             }
 
             switch(cmd)
@@ -301,9 +301,7 @@ namespace SerialMonitor
             }
 
             if(!pauseConnection && !port.IsOpen)
-            {
-               return;
-            }
+               portConnectInfinite();
          }
       }
 
