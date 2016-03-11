@@ -1,4 +1,14 @@
-﻿using System;
+﻿//---------------------------------------------------------------------------
+//
+// Name:        Argument.cs
+// Author:      Vita Tucek
+// Created:     11.3.2015
+// License:     MIT
+// Description: Command line argument class
+//
+//---------------------------------------------------------------------------
+
+using System;
 using System.Collections.Generic;
 using System.Text;
 

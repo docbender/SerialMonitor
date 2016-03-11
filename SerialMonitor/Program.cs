@@ -1,4 +1,14 @@
-﻿using System;
+﻿//---------------------------------------------------------------------------
+//
+// Name:        Program.cs
+// Author:      Vita Tucek
+// Created:     11.3.2015
+// License:     MIT
+// Description: Main program
+//
+//---------------------------------------------------------------------------
+
+using System;
 using System.Collections.Generic;
 using System.Text;
 using System.IO.Ports;
@@ -6,13 +16,15 @@ using System.Threading;
 using System.IO;
 using System.Text.RegularExpressions;
 using System.Diagnostics;
+using System.Windows.Forms;
 
 namespace SerialMonitor
 {
    class Program
    {
       static ArgumentCollection arguments = new ArgumentCollection(new string[] { "baudrate", "parity", "databits", "stopbits", 
-         "repeatfile", "logfile", "logincomingonly", "showascii", "notime", "gaptolerance" });
+         "repeatfile", "logfile", "logincomingonly", "showascii", "notime", "gaptolerance", "continuousmode" });
+      static string version = Application.ProductVersion.Substring(0, Application.ProductVersion.Length-2);
       static long lastTimeReceved = 0;
       static bool repeaterEnabled = false;
       static bool repeaterUseHex = false;
@@ -24,6 +36,16 @@ namespace SerialMonitor
       static bool noTime = false;
       static int gapTolerance = 0;
       static bool gapToleranceEnable = false;
+      static bool continuousMode = false;
+      /// <summary>
+      /// Flag for stop printing communication data. Log into file will continue.
+      /// </summary>
+      static bool pausePrint = false;
+      /// <summary>
+      /// Flag for pause / resume connection
+      /// </summary>
+      static bool pauseConnection = false;
+      static StringBuilder inBuffer = new StringBuilder();
 
       /// <summary>
       /// Main loop
@@ -31,14 +53,13 @@ namespace SerialMonitor
       /// <param name="args"></param>
       static void Main(string[] args)
       {
-         consoleWriteLine("SerialMonitor v.1.2.0");
-
          string portName = IsRunningOnMono() ? "/dev/ttyS1" : "COM1";
 
          if(args.Length > 0)
          {
             if(args[0].Equals("-?") || args[0].Equals("-help") || args[0].Equals("--help") || args[0].Equals("?") || args[0].Equals("/?"))
             {
+               consoleWriteLineNoTrace("SerialMonitor v." + version);
                printHelp();
                Console.WriteLine("\nPress [Enter] to exit");
                Console.ReadLine();
@@ -59,6 +80,13 @@ namespace SerialMonitor
          }
 
          arguments.Parse(args);
+
+         continuousMode = arguments.GetArgument("continuousmode").Enabled;
+
+         if(!continuousMode)
+            Cinout.Init();
+         else
+            consoleWriteLineNoTrace("SerialMonitor v." + version);
 
          showAscii = arguments.GetArgument("showascii").Enabled;
          noTime = arguments.GetArgument("notime").Enabled;
@@ -110,7 +138,6 @@ namespace SerialMonitor
          port.ErrorReceived += new SerialErrorReceivedEventHandler(port_ErrorReceived);
          port.PinChanged += new SerialPinChangedEventHandler(port_PinChanged);
 #endif
-
 
          //log option
          arg = arguments.GetArgument("logfile");
@@ -166,7 +193,7 @@ namespace SerialMonitor
 
             if(!isFileNameValid(logFilename))
             {
-               Console.WriteLine("\nPress [Enter] to exit");
+               consoleWriteLine("\nPress [Enter] to exit");
                Console.ReadLine();
 
                return;
@@ -185,44 +212,12 @@ namespace SerialMonitor
                consoleWriteLine("Warning: Program parameters cannot be saved.");
          }
 
-         consoleWriteLine("Opening port {0}: baudrate={1}b/s, parity={2}, databits={3}, stopbits={4}", port.PortName, port.BaudRate.ToString(), port.Parity.ToString(), port.DataBits.ToString(), port.StopBits.ToString());
-
-         try
-         {
-            port.Open();
-         }
-         catch(System.IO.IOException)
-         {
-            consoleWriteError("Cannot open port " + port.PortName);
-            consoleWriteLine("Available ports: ");
-            consoleWriteLine(string.Join(",", SerialPort.GetPortNames()));
-            
-            Console.WriteLine("\nPress [Enter] to exit");
-            Console.ReadLine();
-
-            return;
-         }
-         catch(Exception ex)
-         {
-            consoleWriteLine(ex.ToString());
-            consoleWriteError("Cannot open port " + port.PortName);
-            consoleWriteLine("Available ports:");
-            consoleWriteLine(string.Join(",", SerialPort.GetPortNames()));
-
-            Console.WriteLine("\nPress [Enter] to exit");
-            Console.ReadLine();
-
-            return;
-         }
-
-         consoleWriteLine("Port {0} opened", portName);
-
          Argument repeatfile = arguments.GetArgument("repeatfile");
          if(repeatfile.Enabled)
          {
             if(!isFileNameValid(repeatfile.Parameter))
             {
-               Console.WriteLine("\nPress [Enter] to exit");
+               consoleWriteLine("\nPress [Enter] to exit");
                Console.ReadLine();
 
                return;
@@ -230,13 +225,32 @@ namespace SerialMonitor
             PrepareRepeatFile(repeatfile.Parameter);
          }
 
+         consoleWriteLine("Opening port {0}: baudrate={1}b/s, parity={2}, databits={3}, stopbits={4}", port.PortName, port.BaudRate.ToString(), port.Parity.ToString(), port.DataBits.ToString(), port.StopBits.ToString());
+
+         if(!continuousMode)
+            Cinout.WritePortStatus(port.PortName, false, port.BaudRate);
+
+         portConnectInfinite(port);
+
+         if(port.IsOpen)
+         {
+            consoleWriteLine("Port {0} opened", portName);
+            if(!continuousMode)
+            {
+               Cinout.WritePortStatus(port.PortName, true, port.BaudRate);
+               Cinout.WritePinStatus(port.RtsEnable ? 1 : 0, port.CtsHolding ? 1 : 0, port.DtrEnable ? 1 : 0, port.DsrHolding ? 1 : 0, port.CDHolding ? 1 : 0, port.BreakState ? 1 : 0);
+            }
+         }
+         else
+            return;
+
 #if __MonoCS__
          SerialPinChange _pinsStatesNow = 0;
          SerialPinChange _pinsStatesOld = 0;
 #endif
+         bool exit = false;
 
-
-         while(port.IsOpen)
+         while(!exit)
          {
 #if __MonoCS__
             if(port.BytesToRead > 0)
@@ -260,51 +274,150 @@ namespace SerialMonitor
 #else
             Thread.Sleep(100);
 #endif
-
-            if(Console.KeyAvailable)
+            Command cmd = consoleReadCommand();
+            if(cmd == Command.EXIT)
             {
-               string line = Console.ReadLine();
+               port.Close();
+               exit = true;
+               break;
+            }
 
-               if(line.Equals("exit"))
-               {
-                  port.Close();
-                  return;
-               }
-               else if(line.Equals("help"))
-               {
+            switch(cmd)
+            {
+               case Command.PAUSE:
+                  pausePrint = !pausePrint;
+                  break;
+               case Command.CONNECT:
+                  connectCommand(port);
+                  break;
+               case Command.HELP:
                   printHelp();
-               }
-               else if(line.Equals("pause"))
+                  break;
+               case Command.SEND:
+                  consoleWriteLine("Type data to send: ");
+                  string line = consoleReadLine();
+                  consoleWriteLine("Sent: {0}", line);
+                  break;
+            }
+
+            if(!pauseConnection && !port.IsOpen)
+            {
+               return;
+            }
+         }
+      }
+
+      /// <summary>
+      /// Connecting to port in infinite loop
+      /// </summary>
+      /// <param name="port"></param>
+      private static void portConnectInfinite(SerialPort port)
+      {
+         do
+         {
+            if(!portConnect(port))
+            {
+               string waitText = "Waiting 5s to reconnect...";
+               consoleWrite(waitText);
+
+               for(int i=0;i<5;i++)
                {
+                  for(int j=0;j<4;j++)
+                  {
+                     Thread.Sleep(250);
 
+                     consoleWrite(j==0 ? "/" : j==1 ? "-" : j==2 ? "\\" : "|");
+                     consoleCursorLeft(-1);
+                  }
+
+                  consoleWrite(".");
                }
-               else if(line.StartsWith("send"))
+
+               consoleCursorLeftReset();
+               consoleWrite(new string(' ', waitText.Length + 5));
+               consoleCursorLeftReset();
+            }
+
+            Command cmd = consoleReadCommand();
+            if(cmd == Command.EXIT)
+            {
+               port.Close();
+               break;
+            }
+
+         }
+         while(!port.IsOpen);
+      }
+
+      /// <summary>
+      /// Connecting to port
+      /// </summary>
+      /// <param name="port"></param>
+      /// <returns></returns>
+      private static bool portConnect(SerialPort port)
+      {
+         try
+         {
+            port.Open();
+         }
+         catch(System.IO.IOException ex)
+         {
+            consoleWriteError("Cannot open port " + port.PortName + ". " + ex.Message);
+            consoleWrite("  Available ports: ");
+            consoleWriteLine(string.Join(",", SerialPort.GetPortNames()));
+
+            return false;
+         }
+         catch(Exception ex)
+         {
+            consoleWriteError("Cannot open port " + port.PortName + ". " + ex.Message);
+
+            return false;
+         }
+
+         return true;
+      }
+
+      /// <summary>
+      /// Close port
+      /// </summary>
+      /// <param name="port"></param>
+      /// <returns></returns>
+      private static void portClose(SerialPort port)
+      {
+         if(port.IsOpen)
+            port.Close();
+      }
+
+      /// <summary>
+      /// Provide connect (pause/resume) command
+      /// </summary>
+      private static void connectCommand(SerialPort port)
+      {
+         pauseConnection = !pauseConnection;
+
+         if(pauseConnection)
+         {
+            consoleWriteLine(" Connection paused. Port closed.");
+            port.Close();
+
+            if(!continuousMode)
+               Cinout.WritePortStatus(port.PortName, false, port.BaudRate);
+         }
+         else
+         {
+            consoleWriteLine(" Resuming connection...");
+
+            portConnectInfinite(port);
+
+            if(port.IsOpen)
+            {
+               consoleWriteLine(" Connection resumed");
+
+               if(!continuousMode)
                {
-                  byte[] data = null;
-                  string sendTest = line.Substring(5).TrimStart(' ');
-
-
-                  if(sendTest.StartsWith("0x"))
-                  {
-                     Regex regWhite = new Regex("\\s+");
-
-                     sendTest = regWhite.Replace(sendTest.Replace("0x", ""), "");
-                     data = new byte[sendTest.Length / 2];
-
-                     for(int i = 0;i < data.Length;i++)
-                     {
-                        data[i] = Convert.ToByte(sendTest.Substring(2 * i, 2), 16);
-                     }
-                  }
-                  else
-                  {
-                     data = ASCIIEncoding.ASCII.GetBytes(sendTest);
-                  }
-
-                  if(data != null)
-                  {
-                     port.Write(data, 0, data.Length);
-                  }
+                  Cinout.WritePortStatus(port.PortName, true, port.BaudRate);
+                  Cinout.WritePinStatus(port.RtsEnable ? 1 : 0, port.CtsHolding ? 1 : 0, port.DtrEnable ? 1 : 0, port.DsrHolding ? 1 : 0, port.CDHolding ? 1 : 0, port.BreakState ? 1 : 0);
                }
             }
          }
@@ -469,7 +582,7 @@ namespace SerialMonitor
          }
       }
 
- 
+
 #if __MonoCS__  
       /// <summary>
       /// Event on serial port "pin was changed"
@@ -489,21 +602,27 @@ namespace SerialMonitor
          SerialPinChange pinsStatesChange = e.EventType;
 #endif
          SerialPort port = ((SerialPort)sender);
-         Console.ForegroundColor = ConsoleColor.Cyan;
 
-         //TODO: change enumerator SerialPinChange printing???
-         consoleWriteLine("Pin {0} changed", pinsStatesChange.ToString());
+         if(continuousMode)
+         {
+            Console.ForegroundColor = ConsoleColor.Cyan;
 
-         writePinState("RTS", port.RtsEnable);
-         writePinState("CTS", port.CtsHolding);
-         writePinState("DTR", port.DtrEnable);
-         writePinState("DSR", port.DsrHolding);
-         writePinState("CD", port.CDHolding);
-         writePinState("Break", port.BreakState);
+            //TODO: change enumerator SerialPinChange printing???
+            consoleWriteLine("Pin {0} changed", pinsStatesChange.ToString());
 
-         consoleWrite("\n");
+            writePinState("RTS", port.RtsEnable);
+            writePinState("CTS", port.CtsHolding);
+            writePinState("DTR", port.DtrEnable);
+            writePinState("DSR", port.DsrHolding);
+            writePinState("CD", port.CDHolding);
+            writePinState("Break", port.BreakState);
 
-         Console.ResetColor();
+            consoleWrite("\n");
+
+            Console.ResetColor();
+         }
+         else
+            Cinout.WritePinStatus(port.RtsEnable ? 1 : 0, port.CtsHolding ? 1 : 0, port.DtrEnable ? 1 : 0, port.DsrHolding ? 1 : 0, port.CDHolding ? 1 : 0, port.BreakState ? 1 : 0);
       }
 
       /// <summary>
@@ -556,17 +675,14 @@ namespace SerialMonitor
          //print time since last receive only if not disabled
          if(lastTimeReceved > 0)
          {
-            Console.ForegroundColor = ConsoleColor.Magenta;
-
             double sinceLastReceive = ((double)(time.Ticks - lastTimeReceved) / 10000);
             applyGapTolerance = (gapToleranceEnable && sinceLastReceive <= gapTolerance);
 
             if(!noTime && (!gapToleranceEnable || !applyGapTolerance))
-               consoleWriteCommunication("\n+" + sinceLastReceive.ToString("F3") + " ms");
+               consoleWriteCommunication(ConsoleColor.Magenta, "\n+" + sinceLastReceive.ToString("F3") + " ms");
          }
 
          //Write to output
-         Console.ForegroundColor = ConsoleColor.Yellow;
          string line = "";
 
          if(showAscii)
@@ -581,24 +697,22 @@ namespace SerialMonitor
             if(noTime || applyGapTolerance)
                line = string.Join(" ", Array.ConvertAll(incoming, x => "0x" + x.ToString("X2")));
             else
-               line = time.ToString() + " " + string.Join(" ", Array.ConvertAll(incoming, x => "0x" + x.ToString("X2")));              
+               line = time.ToString() + " " + string.Join(" ", Array.ConvertAll(incoming, x => "0x" + x.ToString("X2")));
          }
 
          if(applyGapTolerance)
-            consoleWriteCommunication(line);
+            consoleWriteCommunication(ConsoleColor.Yellow, line);
          else
          {
-            consoleWriteCommunication("\n");
-            consoleWriteCommunication(line);
+            consoleWriteCommunication(ConsoleColor.Yellow, "\n");
+            consoleWriteCommunication(ConsoleColor.Yellow, line);
          }
-         
+
 
          lastTimeReceved = time.Ticks;
 
          if(repeaterEnabled)
          {
-            Console.ForegroundColor = ConsoleColor.Green;
-
             byte[] data = data2Send(incoming);
 
             if(data != null)
@@ -613,8 +727,6 @@ namespace SerialMonitor
                }
             }
          }
-
-         Console.ResetColor();
       }
 
       /// <summary>
@@ -639,9 +751,9 @@ namespace SerialMonitor
                }
 
                if(noTime)
-                  consoleWriteCommunication(string.Join("\n ", Array.ConvertAll(data, x => "0x" + x.ToString("X2"))));
+                  consoleWriteCommunication(ConsoleColor.Green, string.Join("\n ", Array.ConvertAll(data, x => "0x" + x.ToString("X2"))));
                else
-                  consoleWriteCommunication("\n" + DateTime.Now.TimeOfDay.ToString() + " " + string.Join(" ", Array.ConvertAll(data, x => "0x" + x.ToString("X2"))));
+                  consoleWriteCommunication(ConsoleColor.Green, "\n" + DateTime.Now.TimeOfDay.ToString() + " " + string.Join(" ", Array.ConvertAll(data, x => "0x" + x.ToString("X2"))));
 
                return data;
             }
@@ -659,9 +771,9 @@ namespace SerialMonitor
                string answer = repeaterMap[ask];
 
                if(noTime)
-                  consoleWriteCommunication("\n" + answer);
+                  consoleWriteCommunication(ConsoleColor.Green, "\n" + answer);
                else
-                  consoleWriteCommunication("\n" + DateTime.Now.TimeOfDay.ToString() + " " + answer);
+                  consoleWriteCommunication(ConsoleColor.Green, "\n" + DateTime.Now.TimeOfDay.ToString() + " " + answer);
 
                return ASCIIEncoding.ASCII.GetBytes(answer);
             }
@@ -681,9 +793,7 @@ namespace SerialMonitor
       /// <param name="arg"></param>
       private static void consoleWriteError(string text, params object[] arg)
       {
-         Console.ForegroundColor = ConsoleColor.Red;
-         consoleWriteLine(text, arg);
-         Console.ResetColor();
+         consoleWriteLine(ConsoleColor.Red, text, arg);
       }
 
       /// <summary>
@@ -693,7 +803,10 @@ namespace SerialMonitor
       /// <param name="parameters"></param>
       private static void consoleWrite(string message, params object[] parameters)
       {
-         Console.Write(message, parameters);
+         if(!continuousMode)
+            Cinout.Write(message, parameters);
+         else
+            Console.Write(message, parameters);
 
          if(logfile && !logincomingonly)
             Trace.Write(string.Format(message, parameters));
@@ -706,10 +819,41 @@ namespace SerialMonitor
       /// <param name="parameters"></param>
       private static void consoleWriteLine(string message, params object[] parameters)
       {
-         Console.WriteLine(message, parameters);
+         if(!continuousMode)
+            Cinout.WriteLine(message, parameters);
+         else
+            Console.WriteLine(message, parameters);
 
          if(logfile && !logincomingonly)
             Trace.WriteLine(string.Format(message, parameters));
+      }
+
+      private static void consoleWriteLine(ConsoleColor color, string message, params object[] parameters)
+      {
+         if(!continuousMode)
+            Cinout.WriteLine(color, message, parameters);
+         else
+         {
+            Console.ForegroundColor = color;
+            Console.WriteLine(message, parameters);
+            Console.ResetColor();
+         }
+
+         if(logfile && !logincomingonly)
+            Trace.WriteLine(string.Format(message, parameters));
+      }
+
+      /// <summary>
+      /// Print single line without trace log
+      /// </summary>
+      /// <param name="message"></param>
+      /// <param name="parameters"></param>
+      private static void consoleWriteLineNoTrace(string message, params object[] parameters)
+      {
+         if(!continuousMode)
+            Cinout.WriteLine(message, parameters);
+         else
+            Console.WriteLine(message, parameters);
       }
 
       /// <summary>
@@ -717,9 +861,19 @@ namespace SerialMonitor
       /// </summary>
       /// <param name="message"></param>
       /// <param name="parameters"></param>
-      private static void consoleWriteCommunication(string message, params object[] parameters)
+      private static void consoleWriteCommunication(ConsoleColor color, string message, params object[] parameters)
       {
-         consoleWrite(message, parameters);
+         if(!pausePrint)
+         {
+            if(!continuousMode)
+               Cinout.Write(color, message, parameters);
+            else
+            {
+               Console.ForegroundColor = color;
+               consoleWrite(message, parameters);
+               Console.ResetColor();
+            }
+         }
 
          if(logfile)
             Trace.Write(string.Format(message, parameters));
@@ -732,10 +886,32 @@ namespace SerialMonitor
       /// <param name="parameters"></param>
       private static void consoleWriteLineCommunication(string message, params object[] parameters)
       {
-         consoleWriteLine(message, parameters);
+         if(!pausePrint)
+         {
+            if(!continuousMode)
+               Cinout.WriteLine(message, parameters);
+            else
+               consoleWriteLine(message, parameters);
+         }
 
          if(logfile)
             Trace.WriteLine(string.Format(message, parameters));
+      }
+
+      private static void consoleCursorLeft(int moveBy)
+      {
+         if(continuousMode)
+            Console.CursorLeft += moveBy;
+         else
+            Cinout.CursorLeft(moveBy);
+      }
+
+      private static void consoleCursorLeftReset()
+      {
+         if(continuousMode)
+            Console.CursorLeft = 0;
+         else
+            Cinout.CursorLeftReset();
       }
 
       /// <summary>
@@ -743,47 +919,50 @@ namespace SerialMonitor
       /// </summary>
       private static void printHelp()
       {
-         Console.WriteLine("");
-         Console.WriteLine("Usage: serialmonitor PortName [<switch> parameter]");
-         Console.WriteLine("");
-         Console.WriteLine("Switches:");
-         Console.WriteLine("-baudrate {baud rate}: set port baud rate. Default 9600kbps.");
-         Console.WriteLine("-parity {used parity}: set used port parity. Default none. Available parameters odd, even, mark and space.");
-         Console.WriteLine("-databits {used databits}: set data bits count. Default 8 data bits.");
-         Console.WriteLine("-stopbits {used stopbits}: set stop bits count. Default 1 stop bit. Available parameters 0, 1, 1.5 and 2.");
-         Console.WriteLine("-repeatfile {file name}: enable repeat mode with protocol specified in file");
-         Console.WriteLine("-logfile {file name}: set file name for log into that file");
-         Console.WriteLine("-logincomingonly: log into file would be only incoming data");
-         Console.WriteLine("-showascii: communication would be show in ASCII format (otherwise HEX is used)");
-         Console.WriteLine("-notime: time information about incoming data would not be printed");
-         Console.WriteLine("-gaptolerance {time gap in ms}: messages received within specified time gap will be printed together");
+         consoleWriteLineNoTrace("");
+         consoleWriteLineNoTrace("Usage: serialmonitor PortName [<switch> parameter]");
+         consoleWriteLineNoTrace("");
+         consoleWriteLineNoTrace("Switches:");
+         consoleWriteLineNoTrace("-baudrate {baud rate}: set port baud rate. Default 9600kbps.");
+         consoleWriteLineNoTrace("-parity {used parity}: set used port parity. Default none. Available parameters odd, even, mark and space.");
+         consoleWriteLineNoTrace("-databits {used databits}: set data bits count. Default 8 data bits.");
+         consoleWriteLineNoTrace("-stopbits {used stopbits}: set stop bits count. Default 1 stop bit. Available parameters 0, 1, 1.5 and 2.");
+         consoleWriteLineNoTrace("-repeatfile {file name}: enable repeat mode with protocol specified in file");
+         consoleWriteLineNoTrace("-logfile {file name}: set file name for log into that file");
+         consoleWriteLineNoTrace("-logincomingonly: log into file would be only incoming data");
+         consoleWriteLineNoTrace("-showascii: communication would be show in ASCII format (otherwise HEX is used)");
+         consoleWriteLineNoTrace("-notime: time information about incoming data would not be printed");
+         consoleWriteLineNoTrace("-gaptolerance {time gap in ms}: messages received within specified time gap will be printed together");
 
-         Console.WriteLine("");
-         Console.WriteLine("Example: serialmonitor COM1");
-         Console.WriteLine("         serialmonitor COM1 -baudrate 57600 -parity odd -databits 7 -stopbits 1.5");
-         Console.WriteLine("         serialmonitor COM83 -baudrate 19200 -repeatfile protocol.txt");
+         consoleWriteLineNoTrace("");
+         consoleWriteLineNoTrace("Example: serialmonitor COM1");
+         consoleWriteLineNoTrace("         serialmonitor COM1 -baudrate 57600 -parity odd -databits 7 -stopbits 1.5");
+         consoleWriteLineNoTrace("         serialmonitor COM83 -baudrate 19200 -repeatfile protocol.txt");
 
-         Console.WriteLine("");
-         Console.WriteLine("In program commands:");
-         Console.WriteLine("exit or ^C: program exit");
-         Console.WriteLine("send {data to send}: send specified data (in HEX format if data start with 0x otherwise ASCII is send)");
+         consoleWriteLineNoTrace("");
+         consoleWriteLineNoTrace("In program commands:");
+         consoleWriteLineNoTrace("F1: print help");
+         consoleWriteLineNoTrace("F2: pause/resume print on screen");
+         consoleWriteLineNoTrace("F4: pause/resume connection to serial port");
+         consoleWriteLineNoTrace("F5 {data to send}: send specified data (in HEX format if data start with 0x otherwise ASCII is send)");
+         consoleWriteLineNoTrace("F10 or ^C: program exit");
 
-         Console.WriteLine("");
-         Console.WriteLine("In program color schema:");
+         consoleWriteLineNoTrace("");
+         consoleWriteLineNoTrace("In program color schema:");
          Console.ForegroundColor = ConsoleColor.Cyan;
-         Console.WriteLine("Control pin status changed");
+         consoleWriteLineNoTrace("Control pin status changed");
          Console.ForegroundColor = ConsoleColor.Green;
-         Console.WriteLine("Control pin ON");
+         consoleWriteLineNoTrace("Control pin ON");
          Console.ForegroundColor = ConsoleColor.White;
-         Console.WriteLine("Control pin OFF");
+         consoleWriteLineNoTrace("Control pin OFF");
          Console.ForegroundColor = ConsoleColor.Magenta;
-         Console.WriteLine("Time between received data");
+         consoleWriteLineNoTrace("Time between received data");
          Console.ForegroundColor = ConsoleColor.Yellow;
-         Console.WriteLine("Received data");
+         consoleWriteLineNoTrace("Received data");
          Console.ForegroundColor = ConsoleColor.Green;
-         Console.WriteLine("Sended data");
+         consoleWriteLineNoTrace("Sended data");
          Console.ForegroundColor = ConsoleColor.Red;
-         Console.WriteLine("Error");
+         consoleWriteLineNoTrace("Error");
 
          Console.ResetColor();
       }
@@ -795,6 +974,89 @@ namespace SerialMonitor
       public static bool IsRunningOnMono()
       {
          return Type.GetType("Mono.Runtime") != null;
+      }
+
+      enum Command
+      {
+         NONE,
+         EXIT,
+         PAUSE,
+         HELP,
+         SEND,
+         CONNECT
+      };
+
+      /// <summary>
+      /// 
+      /// </summary>
+      /// <returns></returns>
+      private static Command consoleReadCommand()
+      {
+         if(Console.KeyAvailable)
+         {
+            ConsoleKeyInfo k = Console.ReadKey();
+
+            //command keys
+            if(k.Key == ConsoleKey.F1)
+               return Command.HELP;
+            else if(k.Key == ConsoleKey.F2)
+               return Command.PAUSE;
+            else if(k.Key == ConsoleKey.F4)
+               return Command.CONNECT;
+            else if(k.Key == ConsoleKey.F5)
+               return Command.SEND;
+            else if(k.Key == ConsoleKey.F10)
+               return Command.EXIT;
+            else if(k.KeyChar != 0)
+               inBuffer.Append(k.KeyChar);
+
+            //byte[] data = null;
+            //string sendTest = line.Substring(5).TrimStart(' ');
+
+
+            //if(sendTest.StartsWith("0x"))
+            //{
+            //   Regex regWhite = new Regex("\\s+");
+
+            //   sendTest = regWhite.Replace(sendTest.Replace("0x", ""), "");
+            //   data = new byte[sendTest.Length / 2];
+
+            //   for(int i = 0;i < data.Length;i++)
+            //   {
+            //      data[i] = Convert.ToByte(sendTest.Substring(2 * i, 2), 16);
+            //   }
+            //}
+            //else
+            //{
+            //   data = ASCIIEncoding.ASCII.GetBytes(sendTest);
+            //}
+
+            //if(data != null)
+            //{
+            //   port.Write(data, 0, data.Length);
+            //}
+         }
+
+         return Command.NONE;
+      }
+
+
+      private static string consoleReadLine()
+      {
+         ConsoleKeyInfo k = Console.ReadKey();
+
+         while(k.Key != ConsoleKey.Enter)
+         {
+            if(k.KeyChar != 0)
+               inBuffer.Append(k.KeyChar);
+
+            k = Console.ReadKey();
+         }
+
+         string line = inBuffer.ToString();
+         inBuffer.Remove(0, inBuffer.Length);
+
+         return line;
       }
    }
 }

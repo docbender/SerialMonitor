@@ -1,4 +1,14 @@
-﻿using System;
+﻿//---------------------------------------------------------------------------
+//
+// Name:        Config.cs
+// Author:      Vita Tucek
+// Created:     11.3.2015
+// License:     MIT
+// Description: Save / load program configuration
+//
+//---------------------------------------------------------------------------
+
+using System;
 using System.Collections.Generic;
 using System.Text;
 using System.IO;
