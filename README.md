@@ -1,7 +1,9 @@
 # SerialMonitor
-Program is simple piece of software designed for monitoring data on serial port. Time between received data messages is displayed (in miliseconds). In addition to the printing on the screen it allows write everything (or just communication) to a specified file.
+Program is simple piece of software designed for serial port data monitoring together with the possibility to automatically reply to sender. 
 
-Program is written in C# so .NET (in version 3.5) is necessary.
+Time between received data messages is displayed (in miliseconds). In addition to the printing on the screen it allows write everything (or just communication) to a specified file.
+
+Windows and also Linux are supported. Program isn't serial port sniffer so can't monitor port that is already open by another program. Program is written in C# so .NET (version 2.0) or Mono is necessary.
 
 ![](https://github.com/docbender/SerialMonitor/blob/master/img/SM1.png)
 
@@ -19,7 +21,7 @@ Program has also feature that allows answer to sender for specific message. This
 Data in file can be written in hex format (0x leading) or ASCII format. Selected format must be used through whole file.
 
 ##Usage
-Program as commandline program support some parameters. First one (most important) PortName that represent port to open (ex. COM3). When program is started without parameters port COM1 with default parameters is used.
+Program as commandline program support some parameters. First one (most important) PortName that represent port to open (ex. COM3 or /dev/ttyS1). When program is started without parameters port COM1 with default parameters is used.
 
 **serialmonitor PortName [switch parameter]**
 
@@ -36,6 +38,7 @@ Switches:
 Example:
 
     serialmonitor COM1
+    serialmonitor /dev/ttyS1 -baudrate 57600
     serialmonitor COM1 -baudrate 57600 -parity odd -databits 7 -stopbits 1.5
     serialmonitor COM83 -baudrate 19200 -repeatfile protocol.txt
 
