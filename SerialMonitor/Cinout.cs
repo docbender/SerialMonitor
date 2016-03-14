@@ -52,6 +52,7 @@ namespace SerialMonitor
          if(Service)
             return;
 
+         Console.ResetColor();
          Console.SetCursorPosition(0, 0);
 
          if(Console.WindowWidth < 20)
@@ -60,10 +61,10 @@ namespace SerialMonitor
             return;
          }
 
-         int rightSpaceLeft = Console.WindowWidth - 10 - 13 - 17 - 10 - 6;
+         int rightSpaceLeft = Console.WindowWidth - 14- 13 - 17 - 10 - 6;
          if(rightSpaceLeft < 0)
             rightSpaceLeft = 0;
-         Console.WriteLine("+" + new string('-', 10) + "+" + new string('-', 13) + "+" + new string('-', 17) + "+" + new string('-', 10) + "+" + new string('-', rightSpaceLeft) + "+");
+         Console.WriteLine("+" + new string('-', 14) + "+" + new string('-', 13) + "+" + new string('-', 17) + "+" + new string('-', 10) + "+" + new string('-', rightSpaceLeft) + "+");
          for(int i = 1;i < 3;i++)
          {
             Console.SetCursorPosition(0, i);
@@ -71,7 +72,7 @@ namespace SerialMonitor
             Console.SetCursorPosition(Console.WindowWidth - 1, i);
             Console.Write("|");
          }
-         Console.WriteLine("+" + new string('-', 10) + "+" + new string('-', 13) + "+" + new string('-', 17) + "+" + new string('-', 10) + "+" + new string('-', rightSpaceLeft) + "+");
+         Console.WriteLine("+" + new string('-', 14) + "+" + new string('-', 13) + "+" + new string('-', 17) + "+" + new string('-', 10) + "+" + new string('-', rightSpaceLeft) + "+");
 
          Console.SetCursorPosition(0, 4);
          Console.Write("|" + new string(' ', Console.WindowWidth - 2) + "|");
@@ -80,9 +81,9 @@ namespace SerialMonitor
          Console.WriteLine("+" + new string('-', Console.WindowWidth - 2) + "+");
 
          Console.SetCursorPosition(2, 1);
-         Console.Write("F1 help  | F2 no print | F4 close/resume |          |");
+         Console.Write("F1 help      | F2 no print | F4 close/resume | F5 send  |");
          Console.SetCursorPosition(2, 2);
-         Console.Write("F5 send  | F7 RTS pin  | F8 DTR pin      | F10 exit |");
+         Console.Write("F6 Hex/Ascii | F7 RTS pin  | F8 DTR pin      | F10 exit |");
 
          Console.SetCursorPosition(Console.WindowWidth - 16, 1);
          Console.Write(Application.ProductName);
@@ -100,12 +101,14 @@ namespace SerialMonitor
 
       public static void WritePortStatus(string port, bool isOpen, int baudrate)
       {
+         Console.ResetColor();
          Console.SetCursorPosition(2, 4);
          Console.Write("Port:   " + port + "  " + (isOpen ? "Opened" : "Closed") + "  Speed: {0}b/s", baudrate);
       }
 
       public static void WritePinStatus(int rts, int cts, int dtr, int dsr, int cd, int brk)
       {
+         Console.ResetColor();
          Console.SetCursorPosition(2, 5);
          Console.Write("Pins: ");
 
@@ -139,16 +142,21 @@ namespace SerialMonitor
          if(Service)
             return;
 
-         Write(activeColor, Message, parameters);
-         Write(activeColor, "\n", parameters);
+         Write(activeColor, true, Message, parameters);
+         Write(activeColor, false, "\n", parameters);
       }
 
       public static void Write(string Message, object[] parameters)
       {
-         Write(DefaultFore, Message, parameters);
+         Write(DefaultFore, false, Message, parameters);
       }
 
       public static void Write(ConsoleColor activeColor, string Message, object[] parameters)
+      {
+         Write(activeColor, false, Message, parameters);
+      }
+
+      public static void Write(ConsoleColor activeColor, bool onNewLine, string Message, object[] parameters)
       {
          if(Service)
             return;
@@ -164,8 +172,16 @@ namespace SerialMonitor
                {
                   string l = lines[i];
 
-                  Messages[Messages.Count - 1].Text += l;
-                  Messages[Messages.Count - 1].Color = activeColor;
+                  if(i==0 && onNewLine && (Messages[Messages.Count - 1].Text.Length > 0))
+                  {
+                     Messages.Add(new Line(l, activeColor));
+                  }
+                  else
+                  {
+                     Messages[Messages.Count - 1].Text += l;
+                     if(l.Length > 0)
+                        Messages[Messages.Count - 1].Color = activeColor;
+                  }
 
                   if(i < lines.Length - 1)
                      Messages.Add(new Line("", activeColor));
@@ -173,8 +189,16 @@ namespace SerialMonitor
             }
             else
             {
-               Messages[Messages.Count - 1].Text += msg;
-               Messages[Messages.Count - 1].Color = activeColor;
+               if(onNewLine && (Messages[Messages.Count - 1].Text.Length > 0))
+               {
+                  Messages.Add(new Line(msg, activeColor));
+               }
+               else
+               {
+                  Messages[Messages.Count - 1].Text += msg;
+                  if(msg.Length > 0)
+                     Messages[Messages.Count - 1].Color = activeColor;
+               }
             }
 
             int rows = Console.WindowHeight - 7 - 1;

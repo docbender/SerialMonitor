@@ -227,19 +227,15 @@ namespace SerialMonitor
 
          consoleWriteLine("Opening port {0}: baudrate={1}b/s, parity={2}, databits={3}, stopbits={4}", port.PortName, port.BaudRate.ToString(), port.Parity.ToString(), port.DataBits.ToString(), port.StopBits.ToString());
 
-         if(!continuousMode)
-            Cinout.WritePortStatus(port.PortName, false, port.BaudRate);
+         writePortStatus(port);
 
          portConnectInfinite(port);
 
          if(port.IsOpen)
          {
             consoleWriteLine("Port {0} opened", portName);
-            if(!continuousMode)
-            {
-               Cinout.WritePortStatus(port.PortName, true, port.BaudRate);
-               Cinout.WritePinStatus(port.RtsEnable ? 1 : 0, port.CtsHolding ? 1 : 0, port.DtrEnable ? 1 : 0, port.DsrHolding ? 1 : 0, port.CDHolding ? 1 : 0, port.BreakState ? 1 : 0);
-            }
+            writePortStatus(port);
+            writePinStatus(port);
          }
          else
             return;
@@ -286,6 +282,10 @@ namespace SerialMonitor
             {
                case Command.PAUSE:
                   pausePrint = !pausePrint;
+                  if(pausePrint)
+                     consoleWriteLine("Print paused");
+                  else
+                     consoleWriteLine("Print resumed");
                   break;
                case Command.CONNECT:
                   connectCommand(port);
@@ -298,10 +298,40 @@ namespace SerialMonitor
                   string line = consoleReadLine();
                   consoleWriteLine("Sent: {0}", line);
                   break;
+
+               case Command.RTS:
+                  port.RtsEnable = !port.RtsEnable;
+                  writePinStatus(port);
+                  break;
+               case Command.DTR:
+                  port.DtrEnable = !port.DtrEnable;
+                  writePinStatus(port);
+                  break;
+               case Command.FORMAT:
+                  showAscii = !showAscii;
+                  break;
             }
 
             if(!pauseConnection && !port.IsOpen)
-               portConnectInfinite();
+            {
+
+               consoleWriteLine(" Port disconnected....");
+               portConnectInfinite(port);
+            }
+         }
+      }
+
+      private static void writePortStatus(SerialPort port)
+      {
+         if(!continuousMode)
+            Cinout.WritePortStatus(port.PortName, port.IsOpen, port.BaudRate);
+      }
+
+      private static void writePinStatus(SerialPort port)
+      {
+         if(!continuousMode)
+         {            
+            Cinout.WritePinStatus(port.RtsEnable ? 1 : 0, port.CtsHolding ? 1 : 0, port.DtrEnable ? 1 : 0, port.DsrHolding ? 1 : 0, port.CDHolding ? 1 : 0, port.BreakState ? 1 : 0);
          }
       }
 
@@ -361,8 +391,7 @@ namespace SerialMonitor
          catch(System.IO.IOException ex)
          {
             consoleWriteError("Cannot open port " + port.PortName + ". " + ex.Message);
-            consoleWrite("  Available ports: ");
-            consoleWriteLine(string.Join(",", SerialPort.GetPortNames()));
+            consoleWriteLine("  Available ports: " + string.Join(",", SerialPort.GetPortNames()));
 
             return false;
          }
@@ -399,8 +428,7 @@ namespace SerialMonitor
             consoleWriteLine(" Connection paused. Port closed.");
             port.Close();
 
-            if(!continuousMode)
-               Cinout.WritePortStatus(port.PortName, false, port.BaudRate);
+            writePortStatus(port);
          }
          else
          {
@@ -412,11 +440,9 @@ namespace SerialMonitor
             {
                consoleWriteLine(" Connection resumed");
 
-               if(!continuousMode)
-               {
-                  Cinout.WritePortStatus(port.PortName, true, port.BaudRate);
-                  Cinout.WritePinStatus(port.RtsEnable ? 1 : 0, port.CtsHolding ? 1 : 0, port.DtrEnable ? 1 : 0, port.DsrHolding ? 1 : 0, port.CDHolding ? 1 : 0, port.BreakState ? 1 : 0);
-               }
+               writePortStatus(port);
+
+               writePinStatus(port);
             }
          }
       }
@@ -820,12 +846,22 @@ namespace SerialMonitor
          if(!continuousMode)
             Cinout.WriteLine(message, parameters);
          else
+         {
+            if(Console.CursorLeft > 0)
+               Console.WriteLine("");
             Console.WriteLine(message, parameters);
+         }
 
          if(logfile && !logincomingonly)
             Trace.WriteLine(string.Format(message, parameters));
       }
 
+      /// <summary>
+      /// Print single line
+      /// </summary>
+      /// <param name="color"></param>
+      /// <param name="message"></param>
+      /// <param name="parameters"></param>
       private static void consoleWriteLine(ConsoleColor color, string message, params object[] parameters)
       {
          if(!continuousMode)
@@ -877,24 +913,24 @@ namespace SerialMonitor
             Trace.Write(string.Format(message, parameters));
       }
 
-      /// <summary>
-      /// Print line that is involved in communication
-      /// </summary>
-      /// <param name="message"></param>
-      /// <param name="parameters"></param>
-      private static void consoleWriteLineCommunication(string message, params object[] parameters)
-      {
-         if(!pausePrint)
-         {
-            if(!continuousMode)
-               Cinout.WriteLine(message, parameters);
-            else
-               consoleWriteLine(message, parameters);
-         }
+      ///// <summary>
+      ///// Print line that is involved in communication
+      ///// </summary>
+      ///// <param name="message"></param>
+      ///// <param name="parameters"></param>
+      //private static void consoleWriteLineCommunication(string message, params object[] parameters)
+      //{
+      //   if(!pausePrint)
+      //   {
+      //      if(!continuousMode)
+      //         Cinout.WriteLine(message, parameters);
+      //      else
+      //         consoleWriteLine(message, parameters);
+      //   }
 
-         if(logfile)
-            Trace.WriteLine(string.Format(message, parameters));
-      }
+      //   if(logfile)
+      //      Trace.WriteLine(string.Format(message, parameters));
+      //}
 
       private static void consoleCursorLeft(int moveBy)
       {
@@ -944,6 +980,9 @@ namespace SerialMonitor
          consoleWriteLineNoTrace("F2: pause/resume print on screen");
          consoleWriteLineNoTrace("F4: pause/resume connection to serial port");
          consoleWriteLineNoTrace("F5 {data to send}: send specified data (in HEX format if data start with 0x otherwise ASCII is send)");
+         consoleWriteLineNoTrace("F6: toggle between data print format (HEX / ASCII)");
+         consoleWriteLineNoTrace("F7: toggle RST pin");
+         consoleWriteLineNoTrace("F8: toggle DTR pin");
          consoleWriteLineNoTrace("F10 or ^C: program exit");
 
          consoleWriteLineNoTrace("");
@@ -982,7 +1021,10 @@ namespace SerialMonitor
          PAUSE,
          HELP,
          SEND,
-         CONNECT
+         CONNECT,
+         RTS,
+         DTR,
+         FORMAT
       };
 
       /// <summary>
@@ -1004,6 +1046,12 @@ namespace SerialMonitor
                return Command.CONNECT;
             else if(k.Key == ConsoleKey.F5)
                return Command.SEND;
+            else if(k.Key == ConsoleKey.F6)
+               return Command.FORMAT;
+            else if(k.Key == ConsoleKey.F7)
+               return Command.RTS;
+            else if(k.Key == ConsoleKey.F8)
+               return Command.DTR;
             else if(k.Key == ConsoleKey.F10)
                return Command.EXIT;
             else if(k.KeyChar != 0)
