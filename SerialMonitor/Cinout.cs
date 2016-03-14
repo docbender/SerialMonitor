@@ -174,13 +174,30 @@ namespace SerialMonitor
 
                   if(i==0 && onNewLine && (Messages[Messages.Count - 1].Text.Length > 0))
                   {
-                     Messages.Add(new Line(l, activeColor));
+                     if(l.Length <= Console.WindowWidth)
+                        Messages.Add(new Line(l, activeColor));
+                     else
+                        splitAndPrintLongLines(activeColor, l);
                   }
                   else
                   {
-                     Messages[Messages.Count - 1].Text += l;
-                     if(l.Length > 0)
-                        Messages[Messages.Count - 1].Color = activeColor;
+                     if(l.Length + Messages[Messages.Count - 1].Text.Length <= Console.WindowWidth)
+                     {
+                        Messages[Messages.Count - 1].Text += l;
+                        if(l.Length > 0)
+                           Messages[Messages.Count - 1].Color = activeColor;
+                     }
+                     else
+                     {
+                        int currentLeft = Console.WindowWidth - Messages[Messages.Count - 1].Text.Length;
+
+                        Messages[Messages.Count - 1].Text += l.Substring(0, currentLeft);
+
+                        if(l.Length > 0)
+                           Messages[Messages.Count - 1].Color = activeColor;
+
+                        splitAndPrintLongLines(activeColor, l.Substring(currentLeft));
+                     }
                   }
 
                   if(i < lines.Length - 1)
@@ -191,13 +208,30 @@ namespace SerialMonitor
             {
                if(onNewLine && (Messages[Messages.Count - 1].Text.Length > 0))
                {
-                  Messages.Add(new Line(msg, activeColor));
+                  if(msg.Length <= Console.WindowWidth)
+                     Messages.Add(new Line(msg, activeColor));
+                  else
+                     splitAndPrintLongLines(activeColor, msg);
                }
                else
                {
-                  Messages[Messages.Count - 1].Text += msg;
-                  if(msg.Length > 0)
-                     Messages[Messages.Count - 1].Color = activeColor;
+                  if(msg.Length + Messages[Messages.Count - 1].Text.Length <= Console.WindowWidth)
+                  {
+                     Messages[Messages.Count - 1].Text += msg;
+                     if(msg.Length > 0)
+                        Messages[Messages.Count - 1].Color = activeColor;
+                  }
+                  else
+                  {
+                     int currentLeft = Console.WindowWidth - Messages[Messages.Count - 1].Text.Length;
+
+                     Messages[Messages.Count - 1].Text += msg.Substring(0, currentLeft);
+
+                     if(msg.Length > 0)
+                        Messages[Messages.Count - 1].Color = activeColor;
+
+                     splitAndPrintLongLines(activeColor, msg.Substring(currentLeft));
+                  }
                }
             }
 
@@ -224,6 +258,25 @@ namespace SerialMonitor
                   Console.Write(Messages[i].Text + new string(' ', Console.WindowWidth - Messages[i].Text.Length));
                else
                   Console.Write(Messages[i].Text);
+            }
+         }
+      }
+
+      private static void splitAndPrintLongLines(ConsoleColor activeColor, string msg)
+      {
+         string line = msg;
+         while(line.Length > 0)
+         {
+            if(line.Length > Console.WindowWidth)
+            {
+               Messages.Add(new Line(line.Substring(0, Console.WindowWidth), activeColor));
+
+               line = line.Substring(Console.WindowWidth);
+            }
+            else
+            {
+               Messages.Add(new Line(line, activeColor));
+               break;
             }
          }
       }
