@@ -37,6 +37,7 @@ namespace SerialMonitor
       static int gapTolerance = 0;
       static bool gapToleranceEnable = false;
       static bool continuousMode = false;
+      static List<string> commandHistory = new List<string>();
       /// <summary>
       /// Flag for stop printing communication data. Log into file will continue.
       /// </summary>
@@ -294,11 +295,12 @@ namespace SerialMonitor
                   printHelp();
                   break;
                case Command.SEND:
-                  consoleWriteLine("Type data to send: ");
+                  consoleWriteLineNoTrace("Type data to send: ");
                   string line = consoleReadLine();
-                  consoleWriteLine("Sent: {0}", line);
-                  break;
 
+                  if(userDataSend(port, line))
+                     consoleWriteLine("Sent: {0}", line);
+                  break;
                case Command.RTS:
                   port.RtsEnable = !port.RtsEnable;
                   writePinStatus(port);
@@ -321,6 +323,92 @@ namespace SerialMonitor
          }
       }
 
+      private static bool userDataSend(SerialPort port, string line)
+      {
+         if(line.Length == 0)
+         {
+            consoleWriteError("Nothing to sent.");
+            return false;
+         }
+
+         bool hex = false;
+         byte[] data;
+
+         if(line.StartsWith("0x", StringComparison.InvariantCultureIgnoreCase))
+            hex = true;
+
+         if(hex)
+         {
+            string prepared = line.Replace("0x", "");
+
+            Regex reg = new Regex("^([0-9A-Fa-f]{1,2}\\s*)+$");
+
+            if(!reg.IsMatch(prepared))
+            {
+               consoleWriteError("Message is not well formated. Data will be not sent.");
+               return false;
+            }
+
+            string[] parts = prepared.Split(' ');
+            string[] partsReady = new string[parts.Length];
+            int recordsLength = 0, bytesLength = 0;
+
+            foreach(string s in parts)
+            {
+               if(s.Length > 0)
+               {
+                  int bytes = s.Length / 2;
+
+                  if((s.Length % 2) == 1)
+                  {
+                     partsReady[recordsLength++] = "0" + s;
+
+                     bytesLength += bytes + 1;
+                  }
+                  else
+                  {
+                     partsReady[recordsLength++] = s;
+
+                     bytesLength += bytes;
+                  }
+               }
+            }
+
+            data = new byte[bytesLength];
+
+            bytesLength = 0;
+
+            for(int i = 0;i < recordsLength;i++)
+            {
+               for(int j = 0;j < partsReady[i].Length;j=j+2)
+               {
+                  data[bytesLength++] = Convert.ToByte(partsReady[i].Substring(j, 2), 16);
+               }
+            }
+         }
+         else
+         {
+            data = ASCIIEncoding.ASCII.GetBytes(line);
+         }
+
+
+         if(data != null)
+         {
+            try
+            {
+               port.Write(data, 0, data.Length);
+            }
+            catch(Exception ex)
+            {
+               consoleWriteError(ex.ToString());
+
+               return false;
+            }
+         }
+
+         return true;
+      }
+
       private static void writePortStatus(SerialPort port)
       {
          if(!continuousMode)
@@ -330,7 +418,7 @@ namespace SerialMonitor
       private static void writePinStatus(SerialPort port)
       {
          if(!continuousMode)
-         {            
+         {
             Cinout.WritePinStatus(port.RtsEnable ? 1 : 0, port.CtsHolding ? 1 : 0, port.DtrEnable ? 1 : 0, port.DsrHolding ? 1 : 0, port.CDHolding ? 1 : 0, port.BreakState ? 1 : 0);
          }
       }
@@ -967,7 +1055,7 @@ namespace SerialMonitor
          consoleWriteLineNoTrace("-showascii: communication would be show in ASCII format (otherwise HEX is used)");
          consoleWriteLineNoTrace("-notime: time information about incoming data would not be printed");
          consoleWriteLineNoTrace("-gaptolerance {time gap in ms}: messages received within specified time gap will be printed together");
-         consoleWriteLineNoTrace("-continuousmode: start program in standart console mode (scrolling list). Not with primitive text GUI");         
+         consoleWriteLineNoTrace("-continuousmode: start program in standart console mode (scrolling list). Not with primitive text GUI");
 
          consoleWriteLineNoTrace("");
          consoleWriteLineNoTrace("Example: serialmonitor COM1");
@@ -1087,21 +1175,73 @@ namespace SerialMonitor
          return Command.NONE;
       }
 
-
+      /// <summary>
+      /// Read typed char to console
+      /// </summary>
+      /// <returns></returns>
       private static string consoleReadLine()
       {
          ConsoleKeyInfo k = Console.ReadKey();
+         int historyPosition = commandHistory.Count;
 
          while(k.Key != ConsoleKey.Enter)
          {
-            if(k.KeyChar != 0)
+            if(k.Key == ConsoleKey.Backspace)
+            {
+               if(inBuffer.Length > 0)
+               {
+                  inBuffer.Remove(inBuffer.Length-1, 1);
+                  Console.Write(' ');
+                  Console.CursorLeft -= 1;
+               }
+            }
+            else if(k.Key == ConsoleKey.UpArrow)
+            {
+               if(historyPosition-1 >= 0)
+               {
+                  string hist = commandHistory[--historyPosition];
+
+                  Console.CursorLeft = 0;
+                  Console.Write(new string(' ',Console.WindowWidth-1));
+                  Console.CursorLeft = 0;
+                  Console.Write(hist);
+
+                  inBuffer.Remove(0, inBuffer.Length);
+                  inBuffer.Append(hist);
+               }
+            }
+            else if(k.Key == ConsoleKey.DownArrow)
+            {
+               if(historyPosition+1 < commandHistory.Count)
+               {
+                  string hist = commandHistory[++historyPosition];
+
+                  Console.CursorLeft = 0;
+                  Console.Write(new string(' ', Console.WindowWidth-1));
+                  Console.CursorLeft = 0;
+                  Console.Write(hist);
+
+                  inBuffer.Remove(0, inBuffer.Length);
+                  inBuffer.Append(hist);
+               }
+            }
+            else if(k.Key == ConsoleKey.LeftArrow || k.Key == ConsoleKey.RightArrow)
+            {
+
+            }
+            else if(k.KeyChar != 0)
+            {
                inBuffer.Append(k.KeyChar);
+            }
 
             k = Console.ReadKey();
          }
 
          string line = inBuffer.ToString();
          inBuffer.Remove(0, inBuffer.Length);
+
+         if(commandHistory.Count == 0 || !commandHistory[commandHistory.Count-1].Equals(line))
+            commandHistory.Add(line);
 
          return line;
       }
