@@ -44,6 +44,7 @@
     <Compile Include="Argument.cs" />
     <Compile Include="ArgumentCollection.cs" />
     <Compile Include="Cinout.cs" />
+    <Compile Include="CommandEnum.cs" />
     <Compile Include="Config.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

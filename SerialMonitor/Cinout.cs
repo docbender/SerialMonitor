@@ -36,18 +36,48 @@ namespace SerialMonitor
       static bool Service = false;
       static ConsoleColor DefaultFore = ConsoleColor.Gray;
 
+      static int rts, cts, dtr, dsr, cd, brk;
+      static string port;
+      static bool isOpen;
+      static int baudrate;
+      static bool showAscii = false, pausePrint = false, pauseConnection = false;
+
+      static bool sendType = false;
+      static bool sendFile = false;
+
+      public static List<string> CommandHistory = new List<string>();
+      static StringBuilder inBuffer = new StringBuilder();
+      static string sendLineMessage;
+
       public static void Init()
       {
+         Console.CursorVisible = false;
+
          DefaultFore = Console.ForegroundColor;
 
          Messages = new List<Line>();
          Messages.Add(new Line("", DefaultFore));
          lockobj = new object();
 
-         Borders();
+         WritePortStatus("", false, 0);
+         WritePinStatus(-1, -1, -1, -1, -1, -1);
       }
 
-      public static void Borders()
+      public static void Render()
+      {
+         Console.Clear();
+
+         borders();
+         writePortStatus();
+         writePinStatus();
+         printMessages();
+         writeMenuBar();
+
+         if(sendType || sendFile)
+            printSendLine();
+      }
+
+      protected static void borders()
       {
          if(Service)
             return;
@@ -60,40 +90,20 @@ namespace SerialMonitor
             Console.WriteLine("Window is too small!!!!");
             return;
          }
+         string name = " " + Application.ProductName + " v." + Application.ProductVersion.Substring(0, Application.ProductVersion.Length - 2) + " ";
 
-         int rightSpaceLeft = Console.WindowWidth - 14- 13 - 17 - 10 - 6;
-         if(rightSpaceLeft < 0)
-            rightSpaceLeft = 0;
-         Console.WriteLine("+" + new string('-', 14) + "+" + new string('-', 13) + "+" + new string('-', 17) + "+" + new string('-', 10) + "+" + new string('-', rightSpaceLeft) + "+");
-         for(int i = 1;i < 3;i++)
+         Console.WriteLine("+" + new string('-', Console.WindowWidth - 2) + "+");
+         if(Console.WindowWidth > name.Length)
          {
-            Console.SetCursorPosition(0, i);
-            Console.Write("|");
-            Console.SetCursorPosition(Console.WindowWidth - 1, i);
-            Console.Write("|");
+            Console.SetCursorPosition(Console.WindowWidth/2 - name.Length/2, 0);
+            Console.Write(name);
          }
-         Console.WriteLine("+" + new string('-', 14) + "+" + new string('-', 13) + "+" + new string('-', 17) + "+" + new string('-', 10) + "+" + new string('-', rightSpaceLeft) + "+");
 
-         Console.SetCursorPosition(0, 4);
+         Console.SetCursorPosition(0, 1);
          Console.Write("|" + new string(' ', Console.WindowWidth - 2) + "|");
-         Console.SetCursorPosition(0, 5);
+         Console.SetCursorPosition(0, 2);
          Console.Write("|" + new string(' ', Console.WindowWidth - 2) + "|");
          Console.WriteLine("+" + new string('-', Console.WindowWidth - 2) + "+");
-
-         Console.SetCursorPosition(2, 1);
-         Console.Write("F1 help      | F2 no print | F4 close/resume | F5 send  |");
-         Console.SetCursorPosition(2, 2);
-         Console.Write("F6 Hex/Ascii | F7 RTS pin  | F8 DTR pin      | F10 exit |");
-
-         Console.SetCursorPosition(Console.WindowWidth - 16, 1);
-         Console.Write(Application.ProductName);
-         Console.SetCursorPosition(Console.WindowWidth - 14, 2);
-         Console.Write("v." + Application.ProductVersion.Substring(0, Application.ProductVersion.Length - 2));
-
-         WritePortStatus("", false, 0);
-         WritePinStatus(-1, -1, -1, -1, -1, -1);
-
-         Console.SetCursorPosition(0, 6);
 
          originalheight = Console.WindowHeight;
          originalwidth = Console.WindowWidth;
@@ -101,15 +111,50 @@ namespace SerialMonitor
 
       public static void WritePortStatus(string port, bool isOpen, int baudrate)
       {
+         Cinout.port = port;
+         Cinout.isOpen = isOpen;
+         Cinout.baudrate = baudrate;
+
+         Render();
+      }
+
+      protected static void writePortStatus()
+      {
          Console.ResetColor();
-         Console.SetCursorPosition(2, 4);
-         Console.Write("Port:   " + port + "  " + (isOpen ? "Opened" : "Closed") + "  Speed: {0}b/s", baudrate);
+         Console.SetCursorPosition(2, 1);
+         Console.Write("Port:   " + port + "  ");
+         if(isOpen)
+         {
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.Write("Opened");
+         }
+         else
+         {
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.Write("Closed");
+         }
+
+         Console.ResetColor();
+
+         Console.Write("  Speed: {0}b/s", baudrate);
       }
 
       public static void WritePinStatus(int rts, int cts, int dtr, int dsr, int cd, int brk)
       {
+         Cinout.rts = rts;
+         Cinout.cts = cts;
+         Cinout.dtr = dtr;
+         Cinout.dsr = dsr;
+         Cinout.cd = cd;
+         Cinout.brk = brk;
+
+         Render();
+      }
+
+      protected static void writePinStatus()
+      {
          Console.ResetColor();
-         Console.SetCursorPosition(2, 5);
+         Console.SetCursorPosition(2, 2);
          Console.Write("Pins: ");
 
          printPin("RTS", rts, ConsoleColor.Green);
@@ -120,7 +165,7 @@ namespace SerialMonitor
          printPin("BREAK", brk, ConsoleColor.Red);
       }
 
-      private static void printPin(string pin, int state, ConsoleColor activeColor)
+      protected static void printPin(string pin, int state, ConsoleColor activeColor)
       {
          Console.Write("  {0}", pin);
 
@@ -130,6 +175,51 @@ namespace SerialMonitor
          Console.Write(" ({0})", (state < 0 || state > 1) ? "?" : state.ToString());
 
          Console.ResetColor();
+      }
+
+      protected static void writeMenuBar()
+      {
+         Console.SetCursorPosition(0, Console.WindowHeight-1);
+
+         if(sendType || sendFile)
+         {
+            Console.ResetColor();
+            Console.Write("Enter"); Console.BackgroundColor = ConsoleColor.Cyan; Console.ForegroundColor = ConsoleColor.Black; Console.Write(" Send ");
+            Console.ResetColor();
+            Console.Write("Esc"); Console.BackgroundColor = ConsoleColor.Cyan; Console.ForegroundColor = ConsoleColor.Black; Console.Write(" Return ");
+         }
+         else
+         {
+            Console.ResetColor();
+            Console.Write("F1"); Console.BackgroundColor = ConsoleColor.Cyan; Console.ForegroundColor = ConsoleColor.Black; Console.Write("Help ");
+            Console.ResetColor();
+            Console.Write("F2"); Console.BackgroundColor = ConsoleColor.Cyan; Console.ForegroundColor = ConsoleColor.Black; if(!pausePrint) Console.Write("NoPrint "); else Console.Write("Print   ");
+            Console.ResetColor();
+            Console.Write("F3"); Console.BackgroundColor = ConsoleColor.Cyan; Console.ForegroundColor = ConsoleColor.Black; if(showAscii) Console.Write("Hex   "); else Console.Write("Ascii ");
+            Console.ResetColor();
+            Console.Write("F4"); Console.BackgroundColor = ConsoleColor.Cyan; Console.ForegroundColor = ConsoleColor.Black; if(!pauseConnection) Console.Write("Close  "); else Console.Write("Resume ");
+            Console.ResetColor();
+            Console.Write("F5"); Console.BackgroundColor = ConsoleColor.Cyan; Console.ForegroundColor = ConsoleColor.Black; Console.Write("Send ");
+            Console.ResetColor();
+            Console.Write("F6"); Console.BackgroundColor = ConsoleColor.Cyan; Console.ForegroundColor = ConsoleColor.Black; Console.Write("SendFile ");
+            Console.ResetColor();
+            Console.Write("F10"); Console.BackgroundColor = ConsoleColor.Cyan; Console.ForegroundColor = ConsoleColor.Black; Console.Write("Exit ");
+            Console.ResetColor();
+            Console.Write("F11"); Console.BackgroundColor = ConsoleColor.Cyan; Console.ForegroundColor = ConsoleColor.Black; Console.Write("RTS ");
+            Console.ResetColor();
+            Console.Write("F12"); Console.BackgroundColor = ConsoleColor.Cyan; Console.ForegroundColor = ConsoleColor.Black; Console.Write("DTR ");
+         }
+
+         Console.ResetColor();
+      }
+
+      public static void WriteMenuBar(bool showAscii, bool pausePrint, bool pauseConnection)
+      {
+         Cinout.showAscii = showAscii;
+         Cinout.pausePrint = pausePrint;
+         Cinout.pauseConnection = pauseConnection;
+
+         Render();
       }
 
       public static void WriteLine(string Message, object[] parameters)
@@ -235,34 +325,33 @@ namespace SerialMonitor
                }
             }
 
-            int rows = Console.WindowHeight - 7 - 1;
-
-            if(rows <= 0)
-               return;
-
-            if(originalheight != Console.WindowHeight || originalwidth != Console.WindowWidth)
-            {
-               Console.Clear();
-               Borders();
-            }
-
-            if(Messages.Count > rows)
-               Messages.RemoveRange(0, Messages.Count - rows);
-
-            for(int i = 0;i < Messages.Count;i++)
-            {
-               Console.SetCursorPosition(0, 7 + i);
-
-               Console.ForegroundColor = Messages[i].Color;
-               if(Console.WindowWidth >= Messages[i].Text.Length)
-                  Console.Write(Messages[i].Text + new string(' ', Console.WindowWidth - Messages[i].Text.Length));
-               else
-                  Console.Write(Messages[i].Text);
-            }
+            Render();
          }
       }
 
-      private static void splitAndPrintLongLines(ConsoleColor activeColor, string msg)
+      protected static void printMessages()
+      {
+         int rows = Console.WindowHeight - 4 - 1 - 1;
+
+         if(rows <= 0)
+            return;
+
+         if(Messages.Count > rows)
+            Messages.RemoveRange(0, Messages.Count - rows);
+
+         for(int i = 0;i < Messages.Count;i++)
+         {
+            Console.SetCursorPosition(0, 4 + i);
+
+            Console.ForegroundColor = Messages[i].Color;
+            if(Console.WindowWidth >= Messages[i].Text.Length)
+               Console.Write(Messages[i].Text + new string(' ', Console.WindowWidth - Messages[i].Text.Length));
+            else
+               Console.Write(Messages[i].Text);
+         }
+      }
+
+      protected static void splitAndPrintLongLines(ConsoleColor activeColor, string msg)
       {
          string line = msg;
          while(line.Length > 0)
@@ -299,6 +388,205 @@ namespace SerialMonitor
       public static void CursorLeftReset()
       {
          Messages[Messages.Count - 1].Text = "";
+      }
+
+      #region send file
+
+      public static void StartSendFile()
+      {
+         sendFile = true;
+         inBuffer = new StringBuilder();
+         sendLineMessage = "File to send: ";
+         printSendLine();
+
+         Console.CursorVisible = true;
+
+         Render();
+      }
+
+      public static void EndSendFile()
+      {
+         sendFile = false;
+         Console.CursorVisible = false;
+
+         Render();
+      }
+
+      #endregion
+
+      #region send data type
+
+      public static void StartSendDataType()
+      {
+         sendType = true;
+         inBuffer = new StringBuilder();
+         sendLineMessage = "Message to send: ";
+
+         Console.CursorVisible = true;
+
+         Render();
+      }
+
+      public static void EndSendDataType()
+      {
+         sendType = false;
+         Console.CursorVisible = false;
+
+         Render();
+      }
+      #endregion
+
+      protected static void printSendLine()
+      {
+         Console.SetCursorPosition(0, Console.WindowHeight-2);
+         Console.Write(new string(' ', Console.WindowWidth));
+         Console.SetCursorPosition(0, Console.WindowHeight-2);
+
+         string begin = sendLineMessage;
+         Console.Write(begin);
+
+         if(begin.Length + inBuffer.Length < Console.WindowWidth)
+         {
+            Console.Write(inBuffer.ToString());
+            Console.SetCursorPosition(begin.Length + inBuffer.Length, Console.WindowHeight-2);
+         }
+         else
+         {
+            Console.Write(inBuffer.ToString().Substring(begin.Length + inBuffer.Length-Console.WindowWidth+1));
+            Console.SetCursorPosition(Console.WindowWidth-1, Console.WindowHeight-2);
+         }
+      }
+
+      protected static void putSendDataChar(char c)
+      {
+         inBuffer.Append(c);
+
+         printSendLine();
+      }
+
+      protected static void removeSendDataChar()
+      {
+         inBuffer.Remove(inBuffer.Length-1, 1);
+
+         printSendLine();
+      }
+
+      protected static void putSendDataLine(string s)
+      {
+         if(inBuffer.Length > 0)
+            inBuffer.Remove(0, inBuffer.Length);
+
+         inBuffer.Append(s);
+
+         printSendLine();
+      }
+
+      /// <summary>
+      /// Command key decoder
+      /// </summary>
+      /// <returns></returns>
+      public static CommandEnum ConsoleReadCommand(bool hideCursor)
+      {
+         if(Console.KeyAvailable)
+         {
+            ConsoleKeyInfo k = Console.ReadKey(hideCursor);
+
+            //command keys
+            if(k.Key == ConsoleKey.F1)
+               return CommandEnum.HELP;
+            else if(k.Key == ConsoleKey.F2)
+               return CommandEnum.PAUSE;
+            else if(k.Key == ConsoleKey.F3)
+               return CommandEnum.FORMAT;
+            else if(k.Key == ConsoleKey.F4)
+               return CommandEnum.CONNECT;
+            else if(k.Key == ConsoleKey.F5)
+               return CommandEnum.SEND;
+            else if(k.Key == ConsoleKey.F6)
+               return CommandEnum.SEND_FILE;
+            else if(k.Key == ConsoleKey.F10)
+               return CommandEnum.EXIT;
+            else if(k.Key == ConsoleKey.F11)
+               return CommandEnum.RTS;
+            else if(k.Key == ConsoleKey.F12)
+               return CommandEnum.DTR;
+            else if(k.KeyChar != 0)
+               putSendDataChar(k.KeyChar);
+         }
+
+         return CommandEnum.NONE;
+      }
+
+      /// <summary>
+      /// Read typed char to console
+      /// </summary>
+      /// <returns></returns>
+      public static string ConsoleReadLine(bool hideCursor)
+      {
+         ConsoleKeyInfo k = Console.ReadKey(hideCursor);
+         int historyPosition = CommandHistory.Count;
+
+         while(k.Key != ConsoleKey.Enter && k.Key != ConsoleKey.Escape)
+         {
+            if(k.Key == ConsoleKey.Backspace)
+            {
+               if(inBuffer.Length > 0)
+               {
+                  removeSendDataChar();
+               }
+            }
+            else if(k.Key == ConsoleKey.UpArrow)
+            {
+               if(historyPosition-1 >= 0)
+               {
+                  string hist = CommandHistory[--historyPosition];
+
+                  Console.CursorLeft = 0;
+                  Console.Write(new string(' ', Console.WindowWidth-1));
+                  Console.CursorLeft = 0;
+                  Console.Write(hist);
+
+                  putSendDataLine(hist);
+               }
+            }
+            else if(k.Key == ConsoleKey.DownArrow)
+            {
+               if(historyPosition+1 < CommandHistory.Count)
+               {
+                  string hist = CommandHistory[++historyPosition];
+
+                  Console.CursorLeft = 0;
+                  Console.Write(new string(' ', Console.WindowWidth-1));
+                  Console.CursorLeft = 0;
+                  Console.Write(hist);
+
+                  putSendDataLine(hist);
+               }
+            }
+            else if(k.Key == ConsoleKey.LeftArrow || k.Key == ConsoleKey.RightArrow)
+            {
+
+            }
+            else if(k.KeyChar != 0)
+            {
+               putSendDataChar(k.KeyChar);
+            }
+
+            k = Console.ReadKey(hideCursor);
+         }
+
+         if(k.Key == ConsoleKey.Enter)
+         {
+            string line = inBuffer.ToString();
+            inBuffer.Remove(0, inBuffer.Length);
+
+            if(CommandHistory.Count == 0 || !CommandHistory[CommandHistory.Count-1].Equals(line))
+               CommandHistory.Add(line);
+
+            return line;
+         }
+
+         return null;
       }
    }
 }

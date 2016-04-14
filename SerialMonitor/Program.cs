@@ -23,7 +23,7 @@ namespace SerialMonitor
    class Program
    {
       static ArgumentCollection arguments = new ArgumentCollection(new string[] { "baudrate", "parity", "databits", "stopbits", 
-         "repeatfile", "logfile", "logincomingonly", "showascii", "notime", "gaptolerance", "continuousmode" });
+         "repeatfile", "logfile", "logincomingonly", "showascii", "notime", "gaptolerance", "continuousmode", "nogui" });
       static string version = Application.ProductVersion.Substring(0, Application.ProductVersion.Length-2);
       static long lastTimeReceved = 0;
       static bool repeaterEnabled = false;
@@ -37,7 +37,6 @@ namespace SerialMonitor
       static int gapTolerance = 0;
       static bool gapToleranceEnable = false;
       static bool continuousMode = false;
-      static List<string> commandHistory = new List<string>();
       /// <summary>
       /// Flag for stop printing communication data. Log into file will continue.
       /// </summary>
@@ -46,7 +45,7 @@ namespace SerialMonitor
       /// Flag for pause / resume connection
       /// </summary>
       static bool pauseConnection = false;
-      static StringBuilder inBuffer = new StringBuilder();
+
 
       /// <summary>
       /// Main loop
@@ -71,7 +70,7 @@ namespace SerialMonitor
          }
          else
          {
-            string[] savedArgs = Config.Load();
+            string[] savedArgs = Config.LoadStarters();
 
             if(savedArgs!=null)
             {
@@ -82,7 +81,7 @@ namespace SerialMonitor
 
          arguments.Parse(args);
 
-         continuousMode = arguments.GetArgument("continuousmode").Enabled;
+         continuousMode = arguments.GetArgument("continuousmode").Enabled || arguments.GetArgument("nogui").Enabled; ;
 
          if(!continuousMode)
             Cinout.Init();
@@ -207,7 +206,7 @@ namespace SerialMonitor
 
          if(args.Length > 0)
          {
-            if(Config.Save(args))
+            if(Config.SaveStarters(args))
                consoleWriteLine("Program parameters have been saved. Will be used next time you start program.");
             else
                consoleWriteLine("Warning: Program parameters cannot be saved.");
@@ -247,6 +246,14 @@ namespace SerialMonitor
 #endif
          bool exit = false;
 
+         string[] history = Config.LoadHistory();
+
+         if(history != null && history.Length > 0)
+         {
+            Cinout.CommandHistory = new List<string>(history);
+            history = null;
+         }
+
          while(!exit)
          {
 #if __MonoCS__
@@ -271,58 +278,98 @@ namespace SerialMonitor
 #else
             Thread.Sleep(100);
 #endif
-            Command cmd = consoleReadCommand();
-            if(cmd == Command.EXIT)
+            CommandEnum cmd = Cinout.ConsoleReadCommand(!continuousMode);
+            if(cmd == CommandEnum.EXIT)
             {
+               Exit();
                port.Close();
                exit = true;
-               return;
             }
 
             switch(cmd)
             {
-               case Command.PAUSE:
+               case CommandEnum.PAUSE:
                   pausePrint = !pausePrint;
                   if(pausePrint)
                      consoleWriteLine("Print paused");
                   else
                      consoleWriteLine("Print resumed");
+
+                  if(!continuousMode)
+                     Cinout.WriteMenuBar(showAscii, pausePrint, pauseConnection);
                   break;
-               case Command.CONNECT:
+               case CommandEnum.CONNECT:
                   connectCommand(port);
+                  if(!continuousMode)
+                     Cinout.WriteMenuBar(showAscii, pausePrint, pauseConnection);
                   break;
-               case Command.HELP:
+               case CommandEnum.HELP:
                   printHelp();
                   break;
-               case Command.SEND:
-                  consoleWriteLineNoTrace("Type data to send: ");
-                  string line = consoleReadLine();
+               case CommandEnum.SEND:
+                  if(continuousMode)
+                     consoleWriteLineNoTrace("Type message to send: ");
+                  else
+                     Cinout.StartSendDataType();
 
-                  if(userDataSend(port, line))
-                     consoleWriteLine("Sent: {0}", line);
+                  string line = Cinout.ConsoleReadLine(!continuousMode);
+
+                  if(!continuousMode)
+                     Cinout.EndSendDataType();
+
+                  if(line != null)
+                  {
+                     if(userDataSend(port, line))
+                        consoleWriteLine("Sent: {0}", line);
+                  }
                   break;
-               case Command.RTS:
+               case CommandEnum.SEND_FILE:
+                  if(continuousMode)
+                     consoleWriteLineNoTrace("Type file to send: ");
+                  else
+                     Cinout.StartSendFile();
+
+                  string filepath = Cinout.ConsoleReadLine(!continuousMode);
+
+                  if(!continuousMode)
+                     Cinout.EndSendFile();
+
+                  if(filepath != null)
+                  {
+                     if(userDataSendFile(port, filepath))
+                        consoleWriteLine("Sent file: {0}", filepath);
+                  }              
+                  break;
+               case CommandEnum.RTS:
                   port.RtsEnable = !port.RtsEnable;
                   writePinStatus(port);
                   break;
-               case Command.DTR:
+               case CommandEnum.DTR:
                   port.DtrEnable = !port.DtrEnable;
                   writePinStatus(port);
                   break;
-               case Command.FORMAT:
+               case CommandEnum.FORMAT:
                   showAscii = !showAscii;
+                  
+                  if(!continuousMode)
+                     Cinout.WriteMenuBar(showAscii, pausePrint, pauseConnection);
                   break;
             }
 
             if(!pauseConnection && !port.IsOpen)
             {
-
                consoleWriteLine(" Port disconnected....");
                portConnectInfinite(port);
             }
          }
       }
 
+      /// <summary>
+      /// Send tada typed by user
+      /// </summary>
+      /// <param name="port"></param>
+      /// <param name="line"></param>
+      /// <returns></returns>
       private static bool userDataSend(SerialPort port, string line)
       {
          if(line.Length == 0)
@@ -409,12 +456,39 @@ namespace SerialMonitor
          return true;
       }
 
+      /// <summary>
+      /// 
+      /// </summary>
+      /// <param name="port"></param>
+      /// <param name="filePath"></param>
+      /// <returns></returns>
+      private static bool userDataSendFile(SerialPort port, string filePath)
+      {
+         if(filePath.Length == 0)
+         {
+            consoleWriteError("Nothing to sent.");
+            return false;
+         }
+
+         consoleWriteError("Not implemented");
+         //TODO: file send
+         return false;
+      }
+
+      /// <summary>
+      /// Print serial port status
+      /// </summary>
+      /// <param name="port"></param>
       private static void writePortStatus(SerialPort port)
       {
          if(!continuousMode)
             Cinout.WritePortStatus(port.PortName, port.IsOpen, port.BaudRate);
       }
 
+      /// <summary>
+      /// Print serial port pin statuses
+      /// </summary>
+      /// <param name="port"></param>
       private static void writePinStatus(SerialPort port)
       {
          if(!continuousMode)
@@ -454,8 +528,8 @@ namespace SerialMonitor
                consoleCursorLeftReset();
             }
 
-            Command cmd = consoleReadCommand();
-            if(cmd == Command.EXIT)
+            CommandEnum cmd = Cinout.ConsoleReadCommand(!continuousMode);
+            if(cmd == CommandEnum.EXIT)
             {
                port.Close();
                break;
@@ -979,6 +1053,24 @@ namespace SerialMonitor
       }
 
       /// <summary>
+      /// Print single line without trace log
+      /// </summary>
+      /// <param name="color"></param>
+      /// <param name="message"></param>
+      /// <param name="parameters"></param>
+      private static void consoleWriteLineNoTrace(ConsoleColor color, string message, params object[] parameters)
+      {
+         if(!continuousMode)
+            Cinout.WriteLine(color, message, parameters);
+         else
+         {
+            Console.ForegroundColor = color;
+            Console.WriteLine(message, parameters);
+            Console.ResetColor();
+         }
+      }
+
+      /// <summary>
       /// Print line that is involved in communication
       /// </summary>
       /// <param name="message"></param>
@@ -1020,6 +1112,10 @@ namespace SerialMonitor
       //      Trace.WriteLine(string.Format(message, parameters));
       //}
 
+      /// <summary>
+      /// Move console cursor in current line
+      /// </summary>
+      /// <param name="moveBy"></param>
       private static void consoleCursorLeft(int moveBy)
       {
          if(continuousMode)
@@ -1028,6 +1124,9 @@ namespace SerialMonitor
             Cinout.CursorLeft(moveBy);
       }
 
+      /// <summary>
+      /// Set cursor to left border
+      /// </summary>
       private static void consoleCursorLeftReset()
       {
          if(continuousMode)
@@ -1045,17 +1144,17 @@ namespace SerialMonitor
          consoleWriteLineNoTrace("Usage: serialmonitor PortName [<switch> parameter]");
          consoleWriteLineNoTrace("");
          consoleWriteLineNoTrace("Switches:");
-         consoleWriteLineNoTrace("-baudrate {baud rate}: set port baud rate. Default 9600kbps.");
-         consoleWriteLineNoTrace("-parity {used parity}: set used port parity. Default none. Available parameters odd, even, mark and space.");
-         consoleWriteLineNoTrace("-databits {used databits}: set data bits count. Default 8 data bits.");
-         consoleWriteLineNoTrace("-stopbits {used stopbits}: set stop bits count. Default 1 stop bit. Available parameters 0, 1, 1.5 and 2.");
-         consoleWriteLineNoTrace("-repeatfile {file name}: enable repeat mode with protocol specified in file");
-         consoleWriteLineNoTrace("-logfile {file name}: set file name for log into that file");
+         consoleWriteLineNoTrace("-baudrate {{baud rate}}: set port baud rate. Default 9600kbps.");
+         consoleWriteLineNoTrace("-parity {{used parity}}: set used port parity. Default none. Available parameters odd, even, mark and space.");
+         consoleWriteLineNoTrace("-databits {{used databits}}: set data bits count. Default 8 data bits.");
+         consoleWriteLineNoTrace("-stopbits {{used stopbits}}: set stop bits count. Default 1 stop bit. Available parameters 0, 1, 1.5 and 2.");
+         consoleWriteLineNoTrace("-repeatfile {{file name}}: enable repeat mode with protocol specified in file");
+         consoleWriteLineNoTrace("-logfile {{file name}}: set file name for log into that file");
          consoleWriteLineNoTrace("-logincomingonly: log into file would be only incoming data");
          consoleWriteLineNoTrace("-showascii: communication would be show in ASCII format (otherwise HEX is used)");
          consoleWriteLineNoTrace("-notime: time information about incoming data would not be printed");
-         consoleWriteLineNoTrace("-gaptolerance {time gap in ms}: messages received within specified time gap will be printed together");
-         consoleWriteLineNoTrace("-continuousmode: start program in standart console mode (scrolling list). Not with primitive text GUI");
+         consoleWriteLineNoTrace("-gaptolerance {{time gap in ms}}: messages received within specified time gap will be printed together");
+         consoleWriteLineNoTrace("-continuousmode or -nogui: start program in normal console mode (scrolling list). Not with primitive text GUI");
 
          consoleWriteLineNoTrace("");
          consoleWriteLineNoTrace("Example: serialmonitor COM1");
@@ -1066,29 +1165,24 @@ namespace SerialMonitor
          consoleWriteLineNoTrace("In program commands:");
          consoleWriteLineNoTrace("F1: print help");
          consoleWriteLineNoTrace("F2: pause/resume print on screen");
+         consoleWriteLineNoTrace("F3: toggle between data print format (HEX / ASCII)");
          consoleWriteLineNoTrace("F4: pause/resume connection to serial port");
-         consoleWriteLineNoTrace("F5 {data to send}: send specified data (in HEX format if data start with 0x otherwise ASCII is send)");
-         consoleWriteLineNoTrace("F6: toggle between data print format (HEX / ASCII)");
-         consoleWriteLineNoTrace("F7: toggle RST pin");
-         consoleWriteLineNoTrace("F8: toggle DTR pin");
+         consoleWriteLineNoTrace("F5: send specified data (in HEX format if data start with 0x otherwise ASCII is send)");
+         consoleWriteLineNoTrace("F6: send specified file)");
+
          consoleWriteLineNoTrace("F10 or ^C: program exit");
+         consoleWriteLineNoTrace("F11: toggle RST pin");
+         consoleWriteLineNoTrace("F12: toggle DTR pin");
 
          consoleWriteLineNoTrace("");
          consoleWriteLineNoTrace("In program color schema:");
-         Console.ForegroundColor = ConsoleColor.Cyan;
-         consoleWriteLineNoTrace("Control pin status changed");
-         Console.ForegroundColor = ConsoleColor.Green;
-         consoleWriteLineNoTrace("Control pin ON");
-         Console.ForegroundColor = ConsoleColor.White;
-         consoleWriteLineNoTrace("Control pin OFF");
-         Console.ForegroundColor = ConsoleColor.Magenta;
-         consoleWriteLineNoTrace("Time between received data");
-         Console.ForegroundColor = ConsoleColor.Yellow;
-         consoleWriteLineNoTrace("Received data");
-         Console.ForegroundColor = ConsoleColor.Green;
-         consoleWriteLineNoTrace("Sended data");
-         Console.ForegroundColor = ConsoleColor.Red;
-         consoleWriteLineNoTrace("Error");
+         consoleWriteLineNoTrace(ConsoleColor.Cyan, "Control pin status changed");
+         consoleWriteLineNoTrace(ConsoleColor.Green, "Control pin ON");
+         consoleWriteLineNoTrace(ConsoleColor.White, "Control pin OFF");
+         consoleWriteLineNoTrace(ConsoleColor.Magenta, "Time between received data");
+         consoleWriteLineNoTrace(ConsoleColor.Yellow, "Received data");
+         consoleWriteLineNoTrace(ConsoleColor.Green, "Sended data");
+         consoleWriteLineNoTrace(ConsoleColor.Red, "Error");
 
          Console.ResetColor();
       }
@@ -1102,148 +1196,13 @@ namespace SerialMonitor
          return Type.GetType("Mono.Runtime") != null;
       }
 
-      enum Command
-      {
-         NONE,
-         EXIT,
-         PAUSE,
-         HELP,
-         SEND,
-         CONNECT,
-         RTS,
-         DTR,
-         FORMAT
-      };
-
       /// <summary>
-      /// 
+      /// Call exit actions
       /// </summary>
-      /// <returns></returns>
-      private static Command consoleReadCommand()
+      private static void Exit()
       {
-         if(Console.KeyAvailable)
-         {
-            ConsoleKeyInfo k = Console.ReadKey();
-
-            //command keys
-            if(k.Key == ConsoleKey.F1)
-               return Command.HELP;
-            else if(k.Key == ConsoleKey.F2)
-               return Command.PAUSE;
-            else if(k.Key == ConsoleKey.F4)
-               return Command.CONNECT;
-            else if(k.Key == ConsoleKey.F5)
-               return Command.SEND;
-            else if(k.Key == ConsoleKey.F6)
-               return Command.FORMAT;
-            else if(k.Key == ConsoleKey.F7)
-               return Command.RTS;
-            else if(k.Key == ConsoleKey.F8)
-               return Command.DTR;
-            else if(k.Key == ConsoleKey.F10)
-               return Command.EXIT;
-            else if(k.KeyChar != 0)
-               inBuffer.Append(k.KeyChar);
-
-            //byte[] data = null;
-            //string sendTest = line.Substring(5).TrimStart(' ');
-
-
-            //if(sendTest.StartsWith("0x"))
-            //{
-            //   Regex regWhite = new Regex("\\s+");
-
-            //   sendTest = regWhite.Replace(sendTest.Replace("0x", ""), "");
-            //   data = new byte[sendTest.Length / 2];
-
-            //   for(int i = 0;i < data.Length;i++)
-            //   {
-            //      data[i] = Convert.ToByte(sendTest.Substring(2 * i, 2), 16);
-            //   }
-            //}
-            //else
-            //{
-            //   data = ASCIIEncoding.ASCII.GetBytes(sendTest);
-            //}
-
-            //if(data != null)
-            //{
-            //   port.Write(data, 0, data.Length);
-            //}
-         }
-
-         return Command.NONE;
+         Config.SaveHistory(Cinout.CommandHistory.ToArray());
       }
 
-      /// <summary>
-      /// Read typed char to console
-      /// </summary>
-      /// <returns></returns>
-      private static string consoleReadLine()
-      {
-         ConsoleKeyInfo k = Console.ReadKey();
-         int historyPosition = commandHistory.Count;
-
-         while(k.Key != ConsoleKey.Enter)
-         {
-            if(k.Key == ConsoleKey.Backspace)
-            {
-               if(inBuffer.Length > 0)
-               {
-                  inBuffer.Remove(inBuffer.Length-1, 1);
-                  Console.Write(' ');
-                  Console.CursorLeft -= 1;
-               }
-            }
-            else if(k.Key == ConsoleKey.UpArrow)
-            {
-               if(historyPosition-1 >= 0)
-               {
-                  string hist = commandHistory[--historyPosition];
-
-                  Console.CursorLeft = 0;
-                  Console.Write(new string(' ',Console.WindowWidth-1));
-                  Console.CursorLeft = 0;
-                  Console.Write(hist);
-
-                  inBuffer.Remove(0, inBuffer.Length);
-                  inBuffer.Append(hist);
-               }
-            }
-            else if(k.Key == ConsoleKey.DownArrow)
-            {
-               if(historyPosition+1 < commandHistory.Count)
-               {
-                  string hist = commandHistory[++historyPosition];
-
-                  Console.CursorLeft = 0;
-                  Console.Write(new string(' ', Console.WindowWidth-1));
-                  Console.CursorLeft = 0;
-                  Console.Write(hist);
-
-                  inBuffer.Remove(0, inBuffer.Length);
-                  inBuffer.Append(hist);
-               }
-            }
-            else if(k.Key == ConsoleKey.LeftArrow || k.Key == ConsoleKey.RightArrow)
-            {
-
-            }
-            else if(k.KeyChar != 0)
-            {
-               inBuffer.Append(k.KeyChar);
-            }
-
-            k = Console.ReadKey();
-         }
-
-         string line = inBuffer.ToString();
-         inBuffer.Remove(0, inBuffer.Length);
-
-         if(commandHistory.Count == 0 || !commandHistory[commandHistory.Count-1].Equals(line))
-            commandHistory.Add(line);
-
-         return line;
-      }
    }
 }
