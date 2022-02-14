@@ -4,3 +4,6 @@
 /SerialMonitor.suo
 /SerialMonitor/bin/Release
 /SerialMonitor/obj/Release
+.vs
+bin
+obj

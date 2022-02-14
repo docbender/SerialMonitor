@@ -10,9 +10,9 @@
 
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Text;
 using System.Threading;
-using System.Windows.Forms;
 
 namespace SerialMonitor
 {
@@ -90,7 +90,7 @@ namespace SerialMonitor
             Console.WriteLine("Window is too small!!!!");
             return;
          }
-         string name = " " + Application.ProductName + " v." + Application.ProductVersion.Substring(0, Application.ProductVersion.Length - 2) + " ";
+         string name = $" SerialMonitor v.{Assembly.GetExecutingAssembly().GetName().Version.ToString(3)} ";
 
          Console.WriteLine("+" + new string('-', Console.WindowWidth - 2) + "+");
          if(Console.WindowWidth > name.Length)
