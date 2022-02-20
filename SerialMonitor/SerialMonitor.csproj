@@ -11,7 +11,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="System.IO.Ports" Version="6.0.0" />
+    <PackageReference Include="Terminal.Gui" Version="1.4.0" />
   </ItemGroup>
 
 </Project>
