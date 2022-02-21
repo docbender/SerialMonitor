@@ -65,7 +65,7 @@ namespace SerialMonitor
             Application.QuitKey = Key.F10;
             win.KeyUp += (e) =>
             {
-                processHotKey(e.KeyEvent);
+                ProcessHotKey(e.KeyEvent);
             };
             // set colorscheme
             win.ColorScheme = Colors.TopLevel;
@@ -122,7 +122,7 @@ namespace SerialMonitor
             logView.SetSource(lines);
         }
 
-        private static void processHotKey(KeyEvent keyEvent)
+        private static void ProcessHotKey(KeyEvent keyEvent)
         {
             if (keyEvent.Key == Key.F1)
             {
