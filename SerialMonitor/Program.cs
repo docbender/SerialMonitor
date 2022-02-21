@@ -40,6 +40,10 @@ namespace SerialMonitor
         /// Flag for pause / resume connection
         /// </summary>
         static bool pauseConnection = false;
+        /// <summary>
+        /// Incoming data buffer
+        /// </summary>
+        static byte[] incoming = new byte[32];
 
 
         /// <summary>
@@ -799,15 +803,24 @@ namespace SerialMonitor
         /// <param name="sender"></param>
         /// <param name="e"></param>
         static void port_DataReceived(object sender, SerialDataReceivedEventArgs e)
-        {
+        {            
             SerialPort port = ((SerialPort)sender);
-            byte[] incoming;
+            int byteCount;
+            int cycle = 0;
 
             try
             {
-                incoming = new byte[port.BytesToRead];
+                do
+                {
+                    byteCount = port.BytesToRead;
+                    Thread.Sleep(2);
+                    cycle++;
+                } while (byteCount < port.BytesToRead);
 
-                port.Read(incoming, 0, incoming.Length);
+                if (incoming.Length < byteCount)
+                    incoming = new byte[byteCount];
+                
+                port.Read(incoming, 0, byteCount);
             }
             catch (Exception ex)
             {
@@ -834,16 +847,16 @@ namespace SerialMonitor
             if (showAscii)
             {
                 if (noTime || applyGapTolerance)
-                    line = ASCIIEncoding.ASCII.GetString(incoming);
+                    line = ASCIIEncoding.ASCII.GetString(incoming,0,byteCount);
                 else
-                    line = time.ToString() + " " + ASCIIEncoding.ASCII.GetString(incoming);
+                    line = time.ToString() + " " + Encoding.ASCII.GetString(incoming, 0, byteCount);
             }
             else
             {
                 if (noTime || applyGapTolerance)
-                    line = string.Join(" ", Array.ConvertAll(incoming, x => "0x" + x.ToString("X2")));
+                    line = string.Join(" ", incoming.Take(byteCount).Select(x=> $"0x{x:X2}"));
                 else
-                    line = time.ToString() + " " + string.Join(" ", Array.ConvertAll(incoming, x => "0x" + x.ToString("X2")));
+                    line = time.ToString() + " " + string.Join(" ", incoming.Take(byteCount).Select(x => $"0x{x:X2}"));
             }
 
             if (applyGapTolerance)
@@ -859,7 +872,7 @@ namespace SerialMonitor
 
             if (repeaterEnabled)
             {
-                byte[] data = data2Send(incoming);
+                byte[] data = data2Send(incoming, byteCount);
 
                 if (data != null)
                 {
@@ -879,12 +892,13 @@ namespace SerialMonitor
         /// prepare data as answer
         /// </summary>
         /// <param name="incoming"></param>
+        /// <param name="byteCount"></param>
         /// <returns></returns>
-        static byte[] data2Send(byte[] incoming)
+        static byte[] data2Send(byte[] incoming, int byteCount)
         {
             if (repeaterUseHex)
             {
-                string ask = string.Join("", Array.ConvertAll(incoming, x => x.ToString("X2")));
+                string ask = string.Join("", incoming.Take(byteCount).Select(x => x.ToString("X2")));
 
                 if (repeaterMap.ContainsKey(ask))
                 {
@@ -897,9 +911,9 @@ namespace SerialMonitor
                     }
 
                     if (noTime)
-                        consoleWriteCommunication(ConsoleColor.Green, string.Join("\n ", Array.ConvertAll(data, x => "0x" + x.ToString("X2"))));
+                        consoleWriteCommunication(ConsoleColor.Green, string.Join("\n ", Array.ConvertAll(data, x => $"0x{x:X2}")));
                     else
-                        consoleWriteCommunication(ConsoleColor.Green, "\n" + DateTime.Now.TimeOfDay.ToString() + " " + string.Join(" ", Array.ConvertAll(data, x => "0x" + x.ToString("X2"))));
+                        consoleWriteCommunication(ConsoleColor.Green, "\n" + DateTime.Now.TimeOfDay.ToString() + " " + string.Join(" ", Array.ConvertAll(data, x => $"0x{x:X2}")));
 
                     return data;
                 }
@@ -910,7 +924,7 @@ namespace SerialMonitor
             }
             else
             {
-                string ask = ASCIIEncoding.ASCII.GetString(incoming);
+                string ask = ASCIIEncoding.ASCII.GetString(incoming,0,byteCount);
 
                 if (repeaterMap.ContainsKey(ask))
                 {
