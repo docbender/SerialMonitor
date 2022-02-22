@@ -26,6 +26,7 @@ namespace SerialMonitor
         public static bool PrintAsHexToLogView { get; set; } = true;
         public static bool RequestPortClose { get; set; } = false;
         public static List<string> CommandHistory { get; } = new List<string>();
+        public static List<string> FileHistory { get; } = new();
 
         // menu
         static readonly Label menu = new Label() { X = 0, Y = 0 };
@@ -33,7 +34,8 @@ namespace SerialMonitor
         public static Action<bool>? ActionPrint;
         public static Action<bool>? ActionPrintAsHex;
         public static Action<bool>? ActionOpenClose;
-        public static Action<string>? ActionSend;
+        public static Action<string?>? ActionSend;
+        public static Action<string?>? ActionSendFile;
         public static Action? ActionRts;
         public static Action? ActionDtr;
 
@@ -77,7 +79,7 @@ namespace SerialMonitor
                 Width = Dim.Fill(),
                 Height = 4
             };
-            
+
             frameStatus.Add(portLabel, pinsLabel, portName, portStatus, portSpeed,
                 pinRTS, pinCTS, pinDTR, pinDSR, pinCD, pinBreak, debugLabel, timeLabel);
 
@@ -147,14 +149,143 @@ namespace SerialMonitor
                 SetBottomMenuText();
             }
             else if (keyEvent.Key == Key.F5)
-            {    
-                // TODO: Send string - dialog needed            
-                ActionSend?.Invoke("NotImplemented");
+            {
+                // dialog
+                bool sendpressed = false;
+                var send = new Button("Send");
+                var cancel = new Button("Cancel");
+                var dialog = new Dialog("Send message", 50, 6, send, cancel);
+                var textField = new TextField()
+                {
+                    X = Pos.Center(),
+                    Y = Pos.Center(),
+                    Width = Dim.Fill() - 2
+                };
+                textField.KeyUp += (key) =>
+                {
+                    if (key.KeyEvent.Key == Key.Enter && !textField.Text.IsEmpty)
+                    {
+                        sendpressed = true;
+                        Application.RequestStop();
+                    }
+                };
+                dialog.Add(textField);
+
+                send.Clicked += () =>
+                {
+                    if (textField.Text.IsEmpty)
+                    {
+                        MessageBox.Query("Warning", "Fill text line.", "OK");
+                    }
+                    else
+                    {
+                        sendpressed = true;
+                        Application.RequestStop();
+                    }
+                };
+                cancel.Clicked += () =>
+                {
+                    Application.RequestStop();
+                };
+                textField.SetFocus();
+                Application.Run(dialog);
+
+                if (sendpressed)
+                    ActionSend?.Invoke(textField.Text.ToString());
             }
             else if (keyEvent.Key == Key.F6)
             {
-                // TODO: Send file - file selection needed
-                ActionSend?.Invoke("NotImplemented");
+                // dialog
+                bool sendpressed = false;
+                var browse = new Button("Browse");
+                var send = new Button("Send") { Enabled = FileHistory.Count > 0 };
+                var cancel = new Button("Cancel");
+                var remove = new Button("Remove") { Enabled = FileHistory.Count > 0 };
+                var dialog = new Dialog("Send file", 50, 10, browse, send, remove, cancel);
+
+                var fileList = new ListView() { X = 1, Y = 1, Height = Dim.Fill() - 2, Width = Dim.Fill() - 2 };
+                fileList.SetSource(FileHistory);
+                fileList.ColorScheme = Colors.TopLevel;
+                dialog.Add(fileList);
+
+                browse.Clicked += () =>
+                {
+                    bool okpressed = false;
+                    var ok = new Button("Ok");
+                    var cancel = new Button("Cancel");
+                    var fileDlg = new Dialog("File to send...", 50, 6, ok, cancel);
+                    var filePathField = new TextField()
+                    {
+                        X = Pos.Center(),
+                        Y = Pos.Center(),
+                        Width = Dim.Fill() - 2
+                    };
+                    filePathField.KeyUp += (key) =>
+                    {
+                        if (key.KeyEvent.Key == Key.Enter && !filePathField.Text.IsEmpty)
+                        {
+                            if (File.Exists(filePathField.Text.ToString()))
+                            {
+                                okpressed = true;
+                                Application.RequestStop();
+                            }
+                            else
+                            {
+                                MessageBox.Query("Warning", "File does not exist.", "OK");
+                            }
+                        }
+                    };
+                    fileDlg.Add(filePathField);
+
+                    ok.Clicked += () =>
+                    {
+                        if (File.Exists(filePathField.Text.ToString()))
+                        {
+                            okpressed = true;
+                            Application.RequestStop();
+                        }
+                        else
+                        {
+                            MessageBox.Query("Warning", "File does not exist.", "OK");
+                        }
+                    };
+                    cancel.Clicked += () =>
+                    {
+                        Application.RequestStop();
+                    };
+                    filePathField.SetFocus();
+                    Application.Run(fileDlg);
+                    if (okpressed)
+                    {
+                        FileHistory.Add(filePathField.Text.ToString());
+                        remove.Enabled = send.Enabled = true;
+                    }
+                };
+                send.Clicked += () =>
+                {
+                    sendpressed = true;
+                    Application.RequestStop();
+                };
+                remove.Clicked += () =>
+                {
+                    if (fileList.SelectedItem > -1 && FileHistory.Count > 0)
+                    {
+                        FileHistory.RemoveAt(fileList.SelectedItem);
+                        fileList.SelectedItem = FileHistory.Count - 1;
+
+                        remove.Enabled = send.Enabled = FileHistory.Count > 0;
+                    }
+                };
+                cancel.Clicked += () =>
+                {
+                    Application.RequestStop();
+                };
+
+                Application.Run(dialog);
+
+                if (sendpressed)
+                    // Send file data
+                    ActionSendFile?.Invoke(FileHistory[fileList.SelectedItem]);
             }
             else if (keyEvent.Key == Key.F11)
             {
@@ -164,6 +295,11 @@ namespace SerialMonitor
             {
                 ActionDtr?.Invoke();
             }
+
+            //int calcDlgHeight()
+            //{
+            //    return 5 + (FileHistory.Count > 0 ? 2 : 0) + FileHistory.Count;
+            //}
         }
 
         private static void SetBottomMenuText()
@@ -201,7 +337,7 @@ namespace SerialMonitor
             if (!logView.IsInitialized)
                 return;
 
-            if (logView.SelectedItem >= lines.Count-2)
+            if (logView.SelectedItem >= lines.Count - 2)
                 logView.MoveDown();
 
             debugLabel.Text = $"xx/{lines.Count}";

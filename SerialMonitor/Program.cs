@@ -260,6 +260,7 @@ namespace SerialMonitor
                 UI.ActionPrintAsHex = (hex) => { showAscii = !hex; };
                 UI.ActionOpenClose = (close) => { pauseConnection = close; };
                 UI.ActionSend = (data) => { UserDataSend(port,data); };
+                UI.ActionSendFile = (file) => { UserDataSendFile(port, file); };
                 UI.ActionRts = () => { port.RtsEnable = !port.RtsEnable; UI.SetPortStatus(port); };
                 UI.ActionDtr = () => { port.DtrEnable = !port.DtrEnable; UI.SetPortStatus(port); };
 
@@ -399,9 +400,9 @@ namespace SerialMonitor
         /// <param name="port"></param>
         /// <param name="line"></param>
         /// <returns></returns>
-        private static bool UserDataSend(SerialPort port, string line)
+        private static bool UserDataSend(SerialPort port, string? line)
         {
-            if (line.Length == 0)
+            if (string.IsNullOrEmpty(line))
             {
                 ConsoleWriteError("Nothing to sent.");
                 return false;
@@ -416,7 +417,6 @@ namespace SerialMonitor
             if (hex)
             {
                 string prepared = line.Replace("0x", "");
-
                 Regex reg = new Regex("^([0-9A-Fa-f]{1,2}\\s*)+$");
 
                 if (!reg.IsMatch(prepared))
@@ -473,6 +473,11 @@ namespace SerialMonitor
                 try
                 {
                     port.Write(data, 0, data.Length);
+
+                    if (noTime)
+                        ConsoleWriteCommunication(ConsoleColor.Green, "\n" + line);
+                    else
+                        ConsoleWriteCommunication(ConsoleColor.Green, "\n" + DateTime.Now.TimeOfDay.ToString() + " " + line);
                 }
                 catch (Exception ex)
                 {
@@ -491,9 +496,9 @@ namespace SerialMonitor
         /// <param name="port"></param>
         /// <param name="filePath"></param>
         /// <returns></returns>
-        private static bool UserDataSendFile(SerialPort port, string filePath)
+        private static bool UserDataSendFile(SerialPort port, string? filePath)
         {
-            if (filePath.Length == 0)
+            if (string.IsNullOrEmpty(filePath))
             {
                 ConsoleWriteError("Nothing to sent.");
                 return false;
