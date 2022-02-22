@@ -70,7 +70,7 @@ namespace SerialMonitor
             }
             else
             {
-                string[] savedArgs = Config.LoadStarters();
+                string[]? savedArgs = Config.LoadStarters();
 
                 if (savedArgs != null)
                 {
@@ -234,11 +234,20 @@ namespace SerialMonitor
 
             bool exit = false;
 
-            string[] history = Config.LoadHistory();
+            string[]? history = Config.LoadHistory();
 
-            if (history != null && history.Length > 0)
+            if (history?.Length > 0)
             {
+                UI.CommandHistory.AddRange(history);
                 history = null;
+            }
+
+            string[]? fileList = Config.LoadFileList();
+
+            if (fileList?.Length > 0)
+            {
+                UI.FileHistory.AddRange(fileList);
+                fileList = null;
             }
 
             if (continuousMode)
@@ -1178,7 +1187,8 @@ namespace SerialMonitor
         /// </summary>
         private static void Exit()
         {
-            Config.SaveHistory(UI.CommandHistory.ToArray());
+            Config.SaveHistory(UI.CommandHistory);
+            Config.SaveFileList(UI.FileHistory);
         }
     }
 }
