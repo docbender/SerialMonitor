@@ -134,7 +134,7 @@ namespace SerialMonitor
                             cfg = sr.ReadToEnd();
                         }
 
-                        Regex rg = new Regex(itemName);
+                        Regex rg = new Regex($"{itemName}.*");
                         if (rg.IsMatch(cfg))
                             cfg = rg.Replace(cfg, newConfigRecord);
                         else
@@ -188,10 +188,12 @@ namespace SerialMonitor
             {
                 Regex rg = new Regex(HISTORY_REGEX);
 
-                MatchCollection mc = rg.Matches(cfg);
-                if (mc.Count > 0)
+                Match mc = rg.Match(cfg);
+                if (mc.Success)
                 {
-                    string cfgLine = mc[0].Groups[2].Value;
+                    string cfgLine = mc.Groups[2].Value;
+                    if (string.IsNullOrEmpty(cfgLine))
+                        return null;
 
                     return cfgLine.Split(';');
                 }
@@ -212,10 +214,13 @@ namespace SerialMonitor
             {
                 Regex rg = new Regex(FILE_LIST_REGEX);
 
-                MatchCollection mc = rg.Matches(cfg);
-                if (mc.Count > 0)
+                Match mc = rg.Match(cfg);
+                if (mc.Success)
                 {
-                    string cfgLine = mc[0].Groups[2].Value;
+                    string cfgLine = mc.Groups[2].Value;
+
+                    if (string.IsNullOrEmpty(cfgLine))
+                        return null;
 
                     return cfgLine.Split(';');
                 }

@@ -250,6 +250,7 @@ namespace SerialMonitor
                 fileList = null;
             }
 
+
             if (continuousMode)
             {
                 while (!exit)
@@ -290,6 +291,8 @@ namespace SerialMonitor
                     }
                     return true;
                 });
+
+                Exit();
             }
         }
 
