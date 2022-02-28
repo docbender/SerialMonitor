@@ -45,6 +45,8 @@ namespace SerialMonitor
         /// </summary>
         static byte[] incoming = new byte[32];
 
+        static readonly SerialPort port = new SerialPort();
+
 
         /// <summary>
         /// Main loop
@@ -130,7 +132,11 @@ namespace SerialMonitor
                     stopBits = StopBits.None;
             }
 
-            SerialPort port = new SerialPort(portName, baudrate, parity, dataBits, stopBits);
+            port.PortName = portName;
+            port.BaudRate = baudrate;
+            port.Parity = parity;
+            port.DataBits = dataBits;
+            port.StopBits = stopBits;
             port.DataReceived += new SerialDataReceivedEventHandler(port_DataReceived);
             port.ErrorReceived += new SerialErrorReceivedEventHandler(port_ErrorReceived);
             port.PinChanged += new SerialPinChangedEventHandler(port_PinChanged);
@@ -273,6 +279,7 @@ namespace SerialMonitor
                 UI.ActionSendFile = (file) => { UserDataSendFile(port, file); };
                 UI.ActionRts = () => { port.RtsEnable = !port.RtsEnable; UI.SetPortStatus(port); };
                 UI.ActionDtr = () => { port.DtrEnable = !port.DtrEnable; UI.SetPortStatus(port); };
+                UI.ActionCommand = (text) => { ProcessCommand(text); };
 
                 UI.SetPortStatus(port);
                 UI.Run((loop) =>
@@ -296,115 +303,21 @@ namespace SerialMonitor
             }
         }
 
-        /*
-                    return;
-        #if __MonoCS__
-                    if(port.BytesToRead > 0)
-                       port_DataReceived(port, null);
-                    else
-                    {
-                       _pinsStatesNow = (SerialPinChange)(Convert.ToInt32(port.CtsHolding) * ((int)SerialPinChange.CtsChanged) 
-                          | Convert.ToInt32(port.CDHolding) * ((int)SerialPinChange.CDChanged) 
-                          | Convert.ToInt32(port.DsrHolding) * ((int)SerialPinChange.DsrChanged) 
-                          | Convert.ToInt32(port.BreakState) * ((int)SerialPinChange.Break)); 
-
-                       if(_pinsStatesNow != _pinsStatesOld)
-                       {
-                          SerialPinChange _pinsStatesChange = _pinsStatesNow ^ _pinsStatesOld;
-
-                          port_PinChanged(port, _pinsStatesChange);
-                          _pinsStatesOld = _pinsStatesNow;
-                       }
-                       Thread.Sleep(100);
-                    }
-        #else
-                    Thread.Sleep(100);
-        #endif
-                    CommandEnum cmd = Cinout.ConsoleReadCommand(!continuousMode);
-                    if (cmd == CommandEnum.EXIT)
-                    {
-                        Exit();
-                        port.Close();
-                        exit = true;
-                    }
-
-                    switch (cmd)
-                    {
-                        case CommandEnum.PAUSE:
-                            pausePrint = !pausePrint;
-                            if (pausePrint)
-                                consoleWriteLine("Print paused");
-                            else
-                                consoleWriteLine("Print resumed");
-
-                            if (!continuousMode)
-                                Cinout.WriteMenuBar(showAscii, pausePrint, pauseConnection);
-                            break;
-                        case CommandEnum.CONNECT:
-                            connectCommand(port);
-                            if (!continuousMode)
-                                Cinout.WriteMenuBar(showAscii, pausePrint, pauseConnection);
-                            break;
-                        case CommandEnum.HELP:
-                            printHelp();
-                            break;
-                        case CommandEnum.SEND:
-                            if (continuousMode)
-                                consoleWriteLineNoTrace("Type message to send: ");
-                            else
-                                Cinout.StartSendDataType();
-
-                            string line = Cinout.ConsoleReadLine(!continuousMode);
-
-                            if (!continuousMode)
-                                Cinout.EndSendDataType();
-
-                            if (line != null)
-                            {
-                                if (userDataSend(port, line))
-                                    consoleWriteLine("Sent: {0}", line);
-                            }
-                            break;
-                        case CommandEnum.SEND_FILE:
-                            if (continuousMode)
-                                consoleWriteLineNoTrace("Type file to send: ");
-                            else
-                                Cinout.StartSendFile();
-
-                            string filepath = Cinout.ConsoleReadLine(!continuousMode);
-
-                            if (!continuousMode)
-                                Cinout.EndSendFile();
-
-                            if (filepath != null)
-                            {
-                                if (userDataSendFile(port, filepath))
-                                    consoleWriteLine("Sent file: {0}", filepath);
-                            }
-                            break;
-                        case CommandEnum.RTS:
-                            port.RtsEnable = !port.RtsEnable;
-                            writePinStatus(port);
-                            break;
-                        case CommandEnum.DTR:
-                            port.DtrEnable = !port.DtrEnable;
-                            writePinStatus(port);
-                            break;
-                        case CommandEnum.FORMAT:
-                            showAscii = !showAscii;
-
-                            if (!continuousMode)
-                                Cinout.WriteMenuBar(showAscii, pausePrint, pauseConnection);
-                            break;
-                    }
-
-                    if (!pauseConnection && !port.IsOpen)
-                    {
-                        consoleWriteLine(" Port disconnected....");
-                        portConnectInfinite(port);
-                    }
-                            }
-        */
+        /// <summary>
+        /// Process command from command line
+        /// </summary>
+        /// <param name="text"></param>
+        private static void ProcessCommand(string? text)
+        {
+            if (string.IsNullOrEmpty(text))
+                return;
+            if (text.Equals("help"))
+                PrintHelp();
+            else if (text.StartsWith("send "))
+                UserDataSend(port, text.Substring(5));
+            else
+                ConsoleWriteLineNoTrace($"Unknown command: {text}");
+        }
 
         /// <summary>
         /// Send tada typed by user
@@ -1157,7 +1070,7 @@ namespace SerialMonitor
             ConsoleWriteLineNoTrace("         serialmonitor COM83 -baudrate 19200 -repeatfile protocol.txt");
 
             ConsoleWriteLineNoTrace("");
-            ConsoleWriteLineNoTrace("In program commands:");
+            ConsoleWriteLineNoTrace("Program shortcuts:");
             ConsoleWriteLineNoTrace("F1: print help");
             ConsoleWriteLineNoTrace("F2: pause/resume print on screen");
             ConsoleWriteLineNoTrace("F3: toggle between data print format (HEX / ASCII)");
@@ -1165,9 +1078,14 @@ namespace SerialMonitor
             ConsoleWriteLineNoTrace("F5: send specified data (in HEX format if data start with 0x otherwise ASCII is send)");
             ConsoleWriteLineNoTrace("F6: send specified file)");
 
-            ConsoleWriteLineNoTrace("F10 or ^C: program exit");
+            ConsoleWriteLineNoTrace("F10: program exit");
             ConsoleWriteLineNoTrace("F11: toggle RTS pin");
             ConsoleWriteLineNoTrace("F12: toggle DTR pin");
+
+            ConsoleWriteLineNoTrace("");
+            ConsoleWriteLineNoTrace("In program commands:");
+            ConsoleWriteLineNoTrace("help: print help");
+            ConsoleWriteLineNoTrace("send <message>: send message");
 
             if (continuousMode)
             {

@@ -38,6 +38,7 @@ namespace SerialMonitor
         public static Action<string?>? ActionSendFile;
         public static Action? ActionRts;
         public static Action? ActionDtr;
+        public static Action<string?>? ActionCommand;
 
         // data view
         static readonly ListView logView = new ListView()
@@ -67,7 +68,7 @@ namespace SerialMonitor
             Application.QuitKey = Key.F10;
             win.KeyUp += (e) =>
             {
-                ProcessHotKey(e.KeyEvent);
+                e.Handled = ProcessHotKey(e.KeyEvent);
             };
             // set colorscheme
             win.ColorScheme = Colors.TopLevel;
@@ -93,10 +94,61 @@ namespace SerialMonitor
                 Height = Dim.Fill() - 1,
                 Text = "text"
             };
+            // command textfield
+            var commandlabel = new Label(">")
+            {
+                X = 0,
+                Y = Pos.Bottom(frameData),
+            };
+            commandlabel.ColorScheme = Colors.Dialog;
+            var commandline = new TextField()
+            {
+                X = 1,
+                Y = Pos.Bottom(frameData),
+                Width = Dim.Fill(),
 
-            // compose
+            };
+            int commandId = -1;
+            commandline.KeyPress += (e) =>
+            {
+                switch (e.KeyEvent.Key)
+                {
+                    case Key.CursorUp:
+                        e.Handled = true;
+                        if (!CommandHistory.Any())
+                            return;
+                        if (commandId == -1)
+                            commandId = CommandHistory.Count - 1;
+                        else if (commandId == 0)
+                            return;
+                        else
+                            commandId--;
+                        commandline.Text = CommandHistory[commandId];
+                        break;
+                    case Key.CursorDown:
+                        e.Handled = true;
+                        if (!CommandHistory.Any())
+                            return;
+                        if (commandId < 0 || commandId + 1 >= CommandHistory.Count)
+                            return;
+                        commandline.Text = CommandHistory[++commandId];
+                        break;
+                    case Key.Enter:
+                        e.Handled = true;
+                        commandId = -1;
+                        string? text = commandline.Text.ToString();                        
+                        if (string.IsNullOrEmpty(text))
+                            return;
+                        commandline.Text = "";
+                        if (!CommandHistory.Any() || !CommandHistory.Last<string>().Equals(text))
+                            CommandHistory.Add(text);
+                        ActionCommand?.Invoke(text);
+                        break;
+                }
+            };
+            // compose  
             frameData.Add(logView);
-            win.Add(frameStatus, frameData);
+            win.Add(frameStatus, frameData, commandlabel, commandline);
             Application.Top.Add(win);
             // scrollbar for textview
             var _scrollBar = new ScrollBarView(logView, true);
@@ -116,15 +168,17 @@ namespace SerialMonitor
                 _scrollBar.Position = logView.SelectedItem;
                 _scrollBar.Refresh();
             };
+
             // add shortcut menu
             Application.Top.Add(menu);
             menu.Y = Pos.Bottom(Application.Top) - 1;
             SetBottomMenuText();
             // bind log data
             logView.SetSource(lines);
+            commandline.SetFocus();
         }
 
-        private static void ProcessHotKey(KeyEvent keyEvent)
+        private static bool ProcessHotKey(KeyEvent keyEvent)
         {
             if (keyEvent.Key == Key.F1)
             {
@@ -295,6 +349,12 @@ namespace SerialMonitor
             {
                 ActionDtr?.Invoke();
             }
+            else
+            {
+                return false;
+            }
+
+            return true;
 
             //int calcDlgHeight()
             //{
