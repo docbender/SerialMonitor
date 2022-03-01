@@ -274,7 +274,7 @@ namespace SerialMonitor
                 UI.ActionHelp = () => { PrintHelp(); };
                 UI.ActionPrint = (print) => { pausePrint = !print; };
                 UI.ActionPrintAsHex = (hex) => { showAscii = !hex; };
-                UI.ActionOpenClose = (close) => { pauseConnection = close; };
+                UI.ActionOpenClose = (close) => { pauseConnection = close; if (close) port.Close(); UI.SetPortStatus(port); };
                 UI.ActionSend = (data) => { UserDataSend(port,data); };
                 UI.ActionSendFile = (file) => { UserDataSendFile(port, file); };
                 UI.ActionRts = () => { port.RtsEnable = !port.RtsEnable; UI.SetPortStatus(port); };
@@ -284,7 +284,7 @@ namespace SerialMonitor
                 UI.SetPortStatus(port);
                 UI.Run((loop) =>
                 {
-                    if (!port.IsOpen)
+                    if (!port.IsOpen && !pauseConnection)
                     {
                         if (lastTry.AddSeconds(5) <= DateTime.Now)
                         {
