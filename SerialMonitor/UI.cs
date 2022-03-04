@@ -469,12 +469,7 @@ namespace SerialMonitor
                 logView.MoveDown();
         }
 
-        internal static void WriteLine(string message, object[] parameters, ConsoleColor color = ConsoleColor.White)
-        {
-            WriteLine(string.Format(message, parameters), color);
-        }
-
-        internal static void Write(string message, ConsoleColor color = ConsoleColor.White)
+        private static void WriteInternally(string message, ConsoleColor color = ConsoleColor.White)
         {
             if (lines.IsEmpty)
                 lines.Add(message);
@@ -482,24 +477,22 @@ namespace SerialMonitor
                 lines.Last += message;
         }
 
-        internal static void Write(string message, object[] parameters, ConsoleColor color = ConsoleColor.White)
+        internal static void Write(string message, ConsoleColor color = ConsoleColor.White)
         {
-            var msg = string.Format(message, parameters);
-
-            if (msg.Contains("\r\n") || msg.Contains('\n'))
+            if (message.Contains("\r\n") || message.Contains('\n'))
             {
                 var msgLines = message.Split(new string[] { "\r\n", "\n" }, StringSplitOptions.None);
                 for (int i = 0; i < msgLines.Length; i++)
                 {
                     if (i == 0)
-                        Write(msgLines[i], color);
+                        WriteInternally(msgLines[i], color);
                     else
                         WriteLine(msgLines[i], color);
                 }
             }
             else
             {
-                Write(msg, color);
+                WriteInternally(message, color);
             }
         }
     }

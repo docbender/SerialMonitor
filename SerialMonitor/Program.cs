@@ -260,7 +260,7 @@ namespace SerialMonitor
                 PrepareRepeatFile(repeatfile.Parameter);
             }
 
-            ConsoleWriteLine("Opening port {0}: baudrate={1}b/s, parity={2}, databits={3}, stopbits={4}", port.PortName, port.BaudRate.ToString(), port.Parity.ToString(), port.DataBits.ToString(), port.StopBits.ToString());
+            ConsoleWriteLine($"Opening port {port.PortName}: baudrate={port.BaudRate}b/s, parity={port.Parity}, databits={port.DataBits}, stopbits={port.StopBits}");
 
             bool exit = false;
 
@@ -279,7 +279,6 @@ namespace SerialMonitor
                 UI.FileHistory.AddRange(fileList);
                 fileList = null;
             }
-
 
             if (continuousMode)
             {
@@ -591,7 +590,7 @@ namespace SerialMonitor
             {
                 if (filePath.Contains(c.ToString()))
                 {
-                    ConsoleWriteError("File name {0} contains invalid character [{1}]. Enter right file name.", filePath, c);
+                    ConsoleWriteError($"File name {filePath} contains invalid character [{c}]. Enter right file name.");
 
                     return false;
                 }
@@ -601,7 +600,7 @@ namespace SerialMonitor
             {
                 if (System.IO.Path.GetFileName(filePath).Contains(c.ToString()))
                 {
-                    ConsoleWriteError("File name {0} contains invalid character [{1}]. Enter right file name.", filePath, c);
+                    ConsoleWriteError($"File name {filePath} contains invalid character [{c}]. Enter right file name.");
 
                     return false;
                 }
@@ -617,7 +616,7 @@ namespace SerialMonitor
         private static void PrepareRepeatFile(string fileName)
         {
             if (!File.Exists(fileName))
-                ConsoleWriteError("File {0} was not found", fileName);
+                ConsoleWriteError($"File {fileName} was not found");
             else
             {
                 try
@@ -625,9 +624,9 @@ namespace SerialMonitor
                     string[] lines = File.ReadAllLines(fileName);
 
                     if (lines.Length == 0)
-                        ConsoleWriteError("Zero lines in file {0}", fileName);
+                        ConsoleWriteError($"Zero lines in file {fileName}");
 
-                    ConsoleWriteLine("File {0} opened and {1} lines has been read", fileName, lines.Length);
+                    ConsoleWriteLine($"File {fileName} opened and {lines.Length} lines has been read");
 
                     repeaterMap.Clear();
 
@@ -719,15 +718,15 @@ namespace SerialMonitor
                     }
 
                     if (linesWithData % 2 == 1)
-                        ConsoleWriteError("Odd number of lines in file {0} with code. One line ask, one line answer.", fileName);
+                        ConsoleWriteError($"Odd number of lines in file {fileName} with code. One line ask, one line answer.");
 
                     repeaterEnabled = true;
 
-                    ConsoleWriteLine("{0} pairs ask/answer ready", repeaterMap.Count);
+                    ConsoleWriteLine($"{repeaterMap.Count} pairs ask/answer ready");
                 }
                 catch (Exception ex)
                 {
-                    ConsoleWriteError("Cannot read file {0}", fileName);
+                    ConsoleWriteError($"Cannot read file {fileName}");
                     ConsoleWriteError(ex.ToString());
                 }
             }
@@ -909,48 +908,45 @@ namespace SerialMonitor
         /// Print error
         /// </summary>
         /// <param name="text"></param>
-        /// <param name="arg"></param>
-        private static void ConsoleWriteError(string text, params object[] arg)
+        private static void ConsoleWriteError(string text)
         {
-            ConsoleWriteLine(ConsoleColor.Red, text, arg);
+            ConsoleWriteLine(ConsoleColor.Red, text);
         }
 
         /// <summary>
         /// Print
         /// </summary>
         /// <param name="message"></param>
-        /// <param name="parameters"></param>
-        private static void ConsoleWrite(string message, params object[] parameters)
+        private static void ConsoleWrite(string message)
         {
             if (!continuousMode)
-                UI.Write(message, parameters);
+                UI.Write(message);
             else
-                Console.Write(message, parameters);
+                Console.Write(message);
 
             if (logfile && !logincomingonly)
-                Trace.Write(string.Format(message, parameters));
+                Trace.Write(message);
         }
 
         /// <summary>
         /// Print single line
         /// </summary>
         /// <param name="message"></param>
-        /// <param name="parameters"></param>
-        private static void ConsoleWriteLine(string message, params object[] parameters)
+        private static void ConsoleWriteLine(string message)
         {
             if (!continuousMode)
             {
-                UI.WriteLine(message, parameters);
+                UI.WriteLine(message);
             }
             else
             {
                 if (Console.CursorLeft > 0)
                     Console.WriteLine("");
-                Console.WriteLine(message, parameters);
+                Console.WriteLine(message);
             }
 
             if (logfile && !logincomingonly)
-                Trace.WriteLine(string.Format(message, parameters));
+                Trace.WriteLine(string.Format(message));
         }
 
         /// <summary>
@@ -958,35 +954,33 @@ namespace SerialMonitor
         /// </summary>
         /// <param name="color"></param>
         /// <param name="message"></param>
-        /// <param name="parameters"></param>
-        private static void ConsoleWriteLine(ConsoleColor color, string message, params object[] parameters)
+        private static void ConsoleWriteLine(ConsoleColor color, string message)
         {
             if (!continuousMode)
             {
-                UI.WriteLine(message, parameters, color);
+                UI.WriteLine(message, color);
             }
             else
             {
                 Console.ForegroundColor = color;
-                Console.WriteLine(message, parameters);
+                Console.WriteLine(message);
                 Console.ResetColor();
             }
 
             if (logfile && !logincomingonly)
-                Trace.WriteLine(string.Format(message, parameters));
+                Trace.WriteLine(string.Format(message));
         }
 
         /// <summary>
         /// Print single line without trace log
         /// </summary>
         /// <param name="message"></param>
-        /// <param name="parameters"></param>
-        private static void ConsoleWriteLineNoTrace(string message, params object[] parameters)
+        private static void ConsoleWriteLineNoTrace(string message)
         {
             if (!continuousMode)
-                UI.WriteLine(message, parameters);
+                UI.WriteLine(message);
             else
-                Console.WriteLine(message, parameters);
+                Console.WriteLine(message);
         }
 
         /// <summary>
@@ -994,17 +988,16 @@ namespace SerialMonitor
         /// </summary>
         /// <param name="color"></param>
         /// <param name="message"></param>
-        /// <param name="parameters"></param>
-        private static void ConsoleWriteLineNoTrace(ConsoleColor color, string message, params object[] parameters)
+        private static void ConsoleWriteLineNoTrace(ConsoleColor color, string message)
         {
             if (!continuousMode)
             {
-                UI.WriteLine(message, parameters, color);
+                UI.WriteLine(message, color);
             }
             else
             {
                 Console.ForegroundColor = color;
-                Console.WriteLine(message, parameters);
+                Console.WriteLine(message);
                 Console.ResetColor();
             }
         }
@@ -1012,26 +1005,26 @@ namespace SerialMonitor
         /// <summary>
         /// Print line that is involved in communication
         /// </summary>
+        /// <param name="color"></param>
         /// <param name="message"></param>
-        /// <param name="parameters"></param>
-        private static void ConsoleWriteCommunication(ConsoleColor color, string message, params object[] parameters)
+        private static void ConsoleWriteCommunication(ConsoleColor color, string message)
         {
             if (!pausePrint)
             {
                 if (!continuousMode)
                 {
-                    UI.Write(message, parameters, color);
+                    UI.Write(message, color);
                 }
                 else
                 {
                     Console.ForegroundColor = color;
-                    ConsoleWrite(message, parameters);
+                    ConsoleWrite(message);
                     Console.ResetColor();
                 }
             }
 
             if (logfile)
-                Trace.Write(string.Format(message, parameters));
+                Trace.Write(string.Format(message));
         }
 
         /// <summary>
