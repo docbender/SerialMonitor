@@ -481,9 +481,20 @@ namespace SerialMonitor
                 return false;
             }
 
-            ConsoleWriteError("Not implemented");
-            //TODO: file send
-            return false;
+            try
+            {
+                var data = File.ReadAllBytes(filePath);
+                port.Write(data, 0, data.Length);
+
+                ConsoleWriteLineNoTrace(ConsoleColor.White, "File sent.");
+            }
+            catch (Exception ex)
+            {
+                ConsoleWriteError(ex.ToString());
+
+                return false;
+            }
+            return true;
         }
 
         /// <summary>
