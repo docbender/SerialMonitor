@@ -1,4 +1,14 @@
-﻿using System.IO.Ports;
+﻿//---------------------------------------------------------------------------
+//
+// Name:        Program.cs
+// Author:      Vita Tucek
+// Created:     20.2.2022
+// License:     MIT
+// Description: UI
+//
+//---------------------------------------------------------------------------
+
+using System.IO.Ports;
 using Terminal.Gui;
 
 namespace SerialMonitor
@@ -20,7 +30,7 @@ namespace SerialMonitor
         static readonly Label pinBreak = new Label() { Text = "Break(?)", X = Pos.Right(pinCD) + 2, Y = 1 };
 
         static readonly Label timeLabel = new Label() { Text = "", X = 50, Y = 0 };
-        static readonly Label debugLabel = new Label() { Text = "", X = 40, Y = 0 };
+        
         // properties
         public static bool PrintToLogView { get; set; } = true;
         public static bool PrintAsHexToLogView { get; set; } = true;
@@ -39,6 +49,8 @@ namespace SerialMonitor
         public static Action? ActionRts;
         public static Action? ActionDtr;
         public static Action<string?>? ActionCommand;
+        public static Func<Setting>? ActionSettingLoad;
+        public static Func<Setting, bool>? ActionSettingSave;
 
         // data view
         static readonly ListView logView = new ListView()
@@ -82,7 +94,7 @@ namespace SerialMonitor
             };
 
             frameStatus.Add(portLabel, pinsLabel, portName, portStatus, portSpeed,
-                pinRTS, pinCTS, pinDTR, pinDSR, pinCD, pinBreak, debugLabel, timeLabel);
+                pinRTS, pinCTS, pinDTR, pinDSR, pinCD, pinBreak, timeLabel);
 
             timeLabel.X = Pos.Right(frameStatus) - 10;
             // data frame
@@ -130,13 +142,17 @@ namespace SerialMonitor
                         if (!CommandHistory.Any())
                             return;
                         if (commandId < 0 || commandId + 1 >= CommandHistory.Count)
+                        {
+                            if(!commandline.Text.IsEmpty)
+                                commandline.Text = "";
                             return;
+                        }
                         commandline.Text = CommandHistory[++commandId];
                         break;
                     case Key.Enter:
                         e.Handled = true;
                         commandId = -1;
-                        string? text = commandline.Text.ToString();                        
+                        string? text = commandline.Text.ToString();
                         if (string.IsNullOrEmpty(text))
                             return;
                         commandline.Text = "";
@@ -345,9 +361,61 @@ namespace SerialMonitor
             {
                 ActionRts?.Invoke();
             }
-            else if (keyEvent.Key == Key.F12)
+            else if ((keyEvent.Key & Key.F12) == Key.F12)
             {
-                ActionDtr?.Invoke();
+                if (keyEvent.IsCtrl)
+                {
+                    var ok = new Button("Ok");
+                    var cancel = new Button("Cancel");
+                    var dialog = new Dialog("Setting", 50, 11, ok, cancel);
+                    var lbPort = new Label("Port:") { X = 1, Y = 1 };
+                    var lbSpeed = new Label("Baud rate:") { X = 1, Y = 2 };
+                    var tbPort = new TextField() { X = 15, Y = 1, Width = 15, Text = "" };
+                    var tbSpeed = new TextField() { X = 15, Y = 2, Width = 10, Text = "" };
+                    var cbTime = new CheckBox("Show transaction time") { X = 1, Y = 4 };
+                    var cbTimeGap = new CheckBox("Show time between 2 transactions") { X = 1, Y = 5 };
+                    var cbSent = new CheckBox("Show sent data") { X = 1, Y = 6 };
+
+                    dialog.Add(lbPort, lbSpeed, tbPort, tbSpeed, cbTime, cbTimeGap, cbSent);
+
+                    if (ActionSettingLoad == null)
+                        return false;
+
+                    Setting setting = ActionSettingLoad.Invoke();
+
+                    tbPort.Text = setting.Port;
+                    tbSpeed.Text = setting.BaudRate.ToString();
+                    cbTime.Checked = setting.ShowTime;
+                    cbTimeGap.Checked = setting.ShowTimeGap;
+                    cbSent.Checked = setting.ShowSentData;
+
+                    ok.Clicked += () =>
+                    {
+                        var port = tbPort.Text.ToString();
+                        if (string.IsNullOrEmpty(port) || !int.TryParse(tbSpeed.Text.ToString(), out int baudrate))
+                            return;
+
+                        setting.Port = port;
+                        setting.BaudRate = baudrate;
+                        setting.ShowTime = cbTime.Checked;
+                        setting.ShowTimeGap = cbTimeGap.Checked;
+                        setting.ShowSentData = cbSent.Checked;
+
+                        if (ActionSettingSave?.Invoke(setting) == true)
+                        {
+                            Application.RequestStop();
+                        }
+                    };
+                    cancel.Clicked += () =>
+                    {
+                        Application.RequestStop();
+                    };
+                    Application.Run(dialog);
+                }
+                else
+                {
+                    ActionDtr?.Invoke();
+                }
             }
             else
             {
@@ -364,7 +432,7 @@ namespace SerialMonitor
 
         private static void SetBottomMenuText()
         {
-            menu.Text = $" F1 Help | F2 {(!PrintToLogView ? "Print   " : "No Print")} | F3 {(!PrintAsHexToLogView ? "Hex " : "Text")} | F4 {(!RequestPortClose ? "Close" : "Open ")} | F5 Send | F6 SendFile | F10 Exit | F11 RTS | F12 DTR";
+            menu.Text = $" F1 Help | F2 {(!PrintToLogView ? "Print   " : "No Print")} | F3 {(!PrintAsHexToLogView ? "Hex " : "Text")} | F4 {(!RequestPortClose ? "Close" : "Open ")} | F5 Send | F6 SendFile | F10 Exit | F11 RTS | F12 DTR | ^F12 Setting";
         }
 
         public static void Run(Func<MainLoop, bool> action)
@@ -399,8 +467,6 @@ namespace SerialMonitor
 
             if (logView.SelectedItem >= lines.Count - 2)
                 logView.MoveDown();
-
-            debugLabel.Text = $"xx/{lines.Count}";
         }
 
         internal static void WriteLine(string message, object[] parameters, ConsoleColor color = ConsoleColor.White)

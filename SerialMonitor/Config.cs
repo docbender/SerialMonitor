@@ -8,10 +8,7 @@
 //
 //---------------------------------------------------------------------------
 
-using System;
-using System.Collections.Generic;
 using System.Text;
-using System.IO;
 using System.Text.RegularExpressions;
 
 namespace SerialMonitor
@@ -19,14 +16,19 @@ namespace SerialMonitor
     class Config
     {
         const string CONFIG_FILE = "serialmonitor.cfg";
-        const string START_ARGUMENTS = "StartArgs=";
-        const string START_ARGUMENTS_REGEX = "(" + START_ARGUMENTS + ")([^\n]*)";
-        const string HISTORY = "CommandHistory=";
-        const string FILE_LIST = "FileList=";        
-        const string HISTORY_REGEX = "(" + HISTORY + ")([^\n]*)";
-        const string FILE_LIST_REGEX = "(" + FILE_LIST + ")([^\n]*)";        
+        const string START_ARGUMENTS = "StartArgs";
+        const string START_ARGUMENTS_REGEX = "(" + START_ARGUMENTS + "=)([^\n]*)";
+        const string HISTORY = "CommandHistory";
+        const string FILE_LIST = "FileList";
+        const string HISTORY_REGEX = "(" + HISTORY + "=)([^\n]*)";
+        const string FILE_LIST_REGEX = "(" + FILE_LIST + "=)([^\n]*)";
+        public const string SETTING_PORT = "Port";
+        public const string SETTING_BAUDRATE = "BaudRate";
+        public const string SETTING_SHOWTIME = "ShowTime";
+        public const string SETTING_SHOWTIMEGAP = "ShowTimeGap";
+        public const string SETTING_SHOWSENTDATA = "ShowSentData";
 
-        static readonly string filePath = Path.Combine(Directory.GetCurrentDirectory(),CONFIG_FILE);
+        static readonly string filePath = Path.Combine(Directory.GetCurrentDirectory(), CONFIG_FILE);
 
         /// <summary>
         /// Save started parameters
@@ -35,12 +37,7 @@ namespace SerialMonitor
         /// <returns></returns>
         public static bool SaveStarters(string[] args)
         {
-            string cfgRecord = START_ARGUMENTS + String.Join(";", args);
-
-            string cfg = ReadConfigFileAndPrepareSave(START_ARGUMENTS_REGEX, cfgRecord);
-
-            if (string.IsNullOrEmpty(cfg))
-                cfg = cfgRecord;
+            string cfg = ReadConfigFileAndPrepareSave(START_ARGUMENTS, String.Join(";", args));
 
             return SaveConfigFile(cfg);
         }
@@ -52,12 +49,7 @@ namespace SerialMonitor
         /// <returns></returns>
         public static bool SaveHistory(IEnumerable<string> args)
         {
-            string cfgRecord = HISTORY + String.Join(";", args);
-
-            string cfg = ReadConfigFileAndPrepareSave(HISTORY, cfgRecord);
-
-            if (string.IsNullOrEmpty(cfg))
-                cfg = cfgRecord;
+            string cfg = ReadConfigFileAndPrepareSave(HISTORY, String.Join(";", args));
 
             return SaveConfigFile(cfg);
         }
@@ -69,12 +61,28 @@ namespace SerialMonitor
         /// <returns></returns>
         public static bool SaveFileList(IEnumerable<string> args)
         {
-            string cfgRecord = FILE_LIST + String.Join(";", args);
+            string cfg = ReadConfigFileAndPrepareSave(FILE_LIST, String.Join(";", args));
 
-            string cfg = ReadConfigFileAndPrepareSave(FILE_LIST, cfgRecord);
+            return SaveConfigFile(cfg);
+        }
 
-            if (string.IsNullOrEmpty(cfg))
-                cfg = cfgRecord;
+        /// <summary>
+        /// Save user setting
+        /// </summary>
+        /// <param name="device"></param>
+        /// <param name="baudrate"></param>
+        /// <param name="showTime"></param>
+        /// <param name="showTimeGap"></param>
+        /// <param name="showSentData"></param>
+        /// <returns></returns>
+        internal static bool SaveSetting(string device, int baudrate, bool showTime, bool showTimeGap, bool showSentData)
+        {
+            string? cfg = ReadConfiguration();
+            cfg = PrepareSave(cfg, SETTING_PORT, device);
+            cfg = PrepareSave(cfg, SETTING_BAUDRATE, baudrate.ToString());
+            cfg = PrepareSave(cfg, SETTING_SHOWTIME, showTime ? "1" : "0");
+            cfg = PrepareSave(cfg, SETTING_SHOWTIMEGAP, showTimeGap ? "1" : "0");
+            cfg = PrepareSave(cfg, SETTING_SHOWSENTDATA, showSentData ? "1" : "0");
 
             return SaveConfigFile(cfg);
         }
@@ -116,40 +124,32 @@ namespace SerialMonitor
         /// Prepare configuration file
         /// </summary>
         /// <param name="itemName"></param>
-        /// <param name="newConfigRecord"></param>
+        /// <param name="itemValue"></param>
         /// <returns></returns>
-        private static string ReadConfigFileAndPrepareSave(string itemName, string newConfigRecord)
+        private static string ReadConfigFileAndPrepareSave(string itemName, string itemValue)
         {
-            string cfg = "";
+            return PrepareSave(ReadConfiguration(), itemName, itemValue);
+        }
 
-            if (File.Exists(filePath))
-            {
-                try
-                {
-                    using FileStream fs = new FileStream(filePath, FileMode.Open, FileAccess.Read);
-                    if (fs.Length > 0)
-                    {
-                        using (TextReader sr = new StreamReader(fs, Encoding.UTF8))
-                        {
-                            cfg = sr.ReadToEnd();
-                        }
+        /// <summary>
+        /// Replace old configuration record per item
+        /// </summary>
+        /// <param name="configuration"></param>
+        /// <param name="itemName"></param>
+        /// <param name="itemValue"></param>
+        /// <returns></returns>
+        private static string PrepareSave(string? configuration, string itemName, string itemValue)
+        {
+            var record = $"{itemName}={itemValue}";
+            if (string.IsNullOrEmpty(configuration))
+                return record;
 
-                        Regex rg = new Regex($"{itemName}.*");
-                        if (rg.IsMatch(cfg))
-                            cfg = rg.Replace(cfg, newConfigRecord);
-                        else
-                            cfg += "\n" + newConfigRecord;
-                    }
-                }
-                catch (FileNotFoundException ex)
-                {
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Error while open config file. {ex}");
-                }
-            }
-            return cfg;
+            Regex rg = new Regex($"{itemName}=.*");
+            if (rg.IsMatch(configuration))
+                configuration = rg.Replace(configuration, record);
+            else
+                configuration += "\n" + record;
+            return configuration;
         }
 
         /// <summary>
@@ -226,6 +226,20 @@ namespace SerialMonitor
                 }
             }
 
+            return null;
+        }
+
+        internal static string? LoadSetting(string parameterName)
+        {
+            string? cfg = ReadConfiguration();
+
+            if (string.IsNullOrEmpty(cfg))
+                return null;
+
+            Regex rg = new Regex($"{parameterName}=(.*)");
+            Match mc = rg.Match(cfg);
+            if (mc.Success)
+                return mc.Groups[1].Value;
             return null;
         }
 
