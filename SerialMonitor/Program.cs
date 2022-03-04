@@ -23,7 +23,6 @@ namespace SerialMonitor
         static long lastTimeReceved = 0;
         static bool repeaterEnabled = false;
         static bool repeaterUseHex = false;
-        static bool showAscii = false;
         static readonly Dictionary<string, string> repeaterMap = new Dictionary<string, string>();
         static bool logfile = false;
         static bool logincomingonly = false;
@@ -163,7 +162,14 @@ namespace SerialMonitor
             else
                 setting.ShowTime = Config.LoadSetting(Config.SETTING_SHOWTIME) != "0";
 
-            showAscii = arguments.GetArgument("showascii").Enabled;            
+            arg = arguments.GetArgument("showascii");
+            if (arg.Enabled)
+                setting.ShowAscii = true;
+            else
+                setting.ShowAscii = Config.LoadSetting(Config.SETTING_SHOWASCII) == "1";
+
+            setting.ShowTimeGap = Config.LoadSetting(Config.SETTING_SHOWTIMEGAP) == "1";
+            setting.ShowSentData = Config.LoadSetting(Config.SETTING_SHOWSENTDATA) == "1";
 
             //log option
             arg = arguments.GetArgument("logfile");
@@ -259,7 +265,7 @@ namespace SerialMonitor
                 }
                 PrepareRepeatFile(repeatfile.Parameter);
             }
-
+            
             ConsoleWriteLine($"Opening port {port.PortName}: baudrate={port.BaudRate}b/s, parity={port.Parity}, databits={port.DataBits}, stopbits={port.StopBits}");
 
             bool exit = false;
@@ -293,12 +299,11 @@ namespace SerialMonitor
                 }
             }
             else
-            {                
-                setting.ShowTimeGap = Config.LoadSetting(Config.SETTING_SHOWTIMEGAP) == "1";
-                setting.ShowSentData = Config.LoadSetting(Config.SETTING_SHOWSENTDATA) == "1";                
+            {                   
+                UI.PrintAsHexToLogView = !setting.ShowAscii;
                 UI.ActionHelp = () => { PrintHelp(); };
                 UI.ActionPrint = (print) => { pausePrint = !print; };
-                UI.ActionPrintAsHex = (hex) => { showAscii = !hex; };
+                UI.ActionPrintAsHex = (hex) => { setting.ShowAscii = !hex; };
                 UI.ActionOpenClose = (close) => { pauseConnection = close; if (close) port.Close(); UI.SetPortStatus(port); };
                 UI.ActionSend = (data) => { UserDataSend(port,data); };
                 UI.ActionSendFile = (file) => { UserDataSendFile(port, file); };
@@ -326,7 +331,7 @@ namespace SerialMonitor
                         UI.SetPortStatus(port);                        
                     }
                     
-                    return Config.SaveSetting(setting.Port, setting.BaudRate, setting.ShowTime, setting.ShowTimeGap, setting.ShowSentData);
+                    return Config.SaveSetting(setting.Port, setting.BaudRate, setting.ShowTime, setting.ShowTimeGap, setting.ShowSentData, setting.ShowAscii);
                 };
 
                 UI.SetPortStatus(port);
@@ -802,7 +807,7 @@ namespace SerialMonitor
             //Write to output
             string line = "";
 
-            if (showAscii)
+            if (setting.ShowAscii)
             {
                 if (!setting.ShowTime || applyGapTolerance)
                     line = ASCIIEncoding.ASCII.GetString(incoming,0,byteCount);
@@ -1116,6 +1121,7 @@ namespace SerialMonitor
         /// </summary>
         private static void Exit()
         {
+            Config.SaveSetting(setting.Port, setting.BaudRate, setting.ShowTime, setting.ShowTimeGap, setting.ShowSentData, setting.ShowAscii);
             Config.SaveHistory(UI.CommandHistory);
             Config.SaveFileList(UI.FileHistory);
         }

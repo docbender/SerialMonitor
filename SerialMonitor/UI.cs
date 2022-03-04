@@ -30,10 +30,11 @@ namespace SerialMonitor
         static readonly Label pinBreak = new Label() { Text = "Break(?)", X = Pos.Right(pinCD) + 2, Y = 1 };
 
         static readonly Label timeLabel = new Label() { Text = "", X = 50, Y = 0 };
-        
+
+        private static bool printAsHexToLogView = true;
         // properties
         public static bool PrintToLogView { get; set; } = true;
-        public static bool PrintAsHexToLogView { get; set; } = true;
+        public static bool PrintAsHexToLogView { get => printAsHexToLogView; set { printAsHexToLogView = value; SetBottomMenuText(); }  }
         public static bool RequestPortClose { get; set; } = false;
         public static List<string> CommandHistory { get; } = new List<string>();
         public static List<string> FileHistory { get; } = new();
@@ -51,7 +52,7 @@ namespace SerialMonitor
         public static Action<string?>? ActionCommand;
         public static Func<Setting>? ActionSettingLoad;
         public static Func<Setting, bool>? ActionSettingSave;
-
+        
         // data view
         static readonly ListView logView = new ListView()
         {
@@ -143,7 +144,7 @@ namespace SerialMonitor
                             return;
                         if (commandId < 0 || commandId + 1 >= CommandHistory.Count)
                         {
-                            if(!commandline.Text.IsEmpty)
+                            if (!commandline.Text.IsEmpty)
                                 commandline.Text = "";
                             return;
                         }
@@ -210,7 +211,6 @@ namespace SerialMonitor
             {
                 PrintAsHexToLogView = !PrintAsHexToLogView;
                 ActionPrintAsHex?.Invoke(PrintAsHexToLogView);
-                SetBottomMenuText();
             }
             else if (keyEvent.Key == Key.F4)
             {
@@ -423,11 +423,6 @@ namespace SerialMonitor
             }
 
             return true;
-
-            //int calcDlgHeight()
-            //{
-            //    return 5 + (FileHistory.Count > 0 ? 2 : 0) + FileHistory.Count;
-            //}
         }
 
         private static void SetBottomMenuText()

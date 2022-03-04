@@ -22,5 +22,6 @@ namespace SerialMonitor
         public bool ShowTime;
         public bool ShowTimeGap;
         public bool ShowSentData;
+        public bool ShowAscii;
     }
 }

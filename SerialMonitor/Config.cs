@@ -27,6 +27,7 @@ namespace SerialMonitor
         public const string SETTING_SHOWTIME = "ShowTime";
         public const string SETTING_SHOWTIMEGAP = "ShowTimeGap";
         public const string SETTING_SHOWSENTDATA = "ShowSentData";
+        public const string SETTING_SHOWASCII = "ShowAscii";        
 
         static readonly string filePath = Path.Combine(Directory.GetCurrentDirectory(), CONFIG_FILE);
 
@@ -74,8 +75,9 @@ namespace SerialMonitor
         /// <param name="showTime"></param>
         /// <param name="showTimeGap"></param>
         /// <param name="showSentData"></param>
+        /// <param name="showAscii"></param>
         /// <returns></returns>
-        internal static bool SaveSetting(string device, int baudrate, bool showTime, bool showTimeGap, bool showSentData)
+        internal static bool SaveSetting(string device, int baudrate, bool showTime, bool showTimeGap, bool showSentData, bool showAscii)
         {
             string? cfg = ReadConfiguration();
             cfg = PrepareSave(cfg, SETTING_PORT, device);
@@ -83,6 +85,7 @@ namespace SerialMonitor
             cfg = PrepareSave(cfg, SETTING_SHOWTIME, showTime ? "1" : "0");
             cfg = PrepareSave(cfg, SETTING_SHOWTIMEGAP, showTimeGap ? "1" : "0");
             cfg = PrepareSave(cfg, SETTING_SHOWSENTDATA, showSentData ? "1" : "0");
+            cfg = PrepareSave(cfg, SETTING_SHOWASCII, showAscii ? "1" : "0");
 
             return SaveConfigFile(cfg);
         }
