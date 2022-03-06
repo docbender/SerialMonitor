@@ -245,6 +245,7 @@ namespace SerialMonitor
                     listener.LogFileName = logFilename;
             }
 
+            /*
             if (args.Length > 0)
             {
                 if (Config.SaveStarters(args))
@@ -252,6 +253,7 @@ namespace SerialMonitor
                 else
                     ConsoleWriteLine("Warning: Program parameters cannot be saved.");
             }
+            */
 
             Argument repeatfile = arguments.GetArgument("repeatfile");
             if (repeatfile.Enabled)
@@ -1121,9 +1123,13 @@ namespace SerialMonitor
         /// </summary>
         private static void Exit()
         {
+            port.Close();
+
             Config.SaveSetting(setting.Port, setting.BaudRate, setting.ShowTime, setting.ShowTimeGap, setting.ShowSentData, setting.ShowAscii);
             Config.SaveHistory(UI.CommandHistory);
             Config.SaveFileList(UI.FileHistory);
+
+            UI.Exit();
         }
     }
 }
