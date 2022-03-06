@@ -202,6 +202,11 @@ namespace SerialMonitor
             Application.Refresh();
         }
 
+        public static void Shutdown()
+        {
+            Application.RequestStop();
+        }
+
         private static bool ProcessHotKey(KeyEvent keyEvent)
         {            
             if (keyEvent.Key == Key.F1)
@@ -451,6 +456,9 @@ namespace SerialMonitor
 
         internal static void SetPinStatus(SerialPort port)
         {
+            if (!port.IsOpen)
+                return;
+
             pinRTS.Text = $"RTS({(port.RtsEnable ? 1 : "0")})";
             pinCTS.Text = $"CTS({(port.CtsHolding ? 1 : "0")})";
             pinDTR.Text = $"DTR({(port.DtrEnable ? 1 : "0")})";

@@ -366,12 +366,23 @@ namespace SerialMonitor
         {
             if (string.IsNullOrEmpty(text))
                 return;
+
             if (text.Equals("help"))
+            {
                 PrintHelp();
+            }
+            else if (text.Equals("exit"))
+            {
+                UI.Shutdown();
+            }
             else if (text.StartsWith("send "))
+            {
                 UserDataSend(port, text.Substring(5));
+            }
             else
+            {
                 ConsoleWriteLineNoTrace($"Unknown command: {text}");
+            }
         }
 
         /// <summary>
@@ -1086,7 +1097,7 @@ namespace SerialMonitor
             ConsoleWriteLineNoTrace("");
             ConsoleWriteLineNoTrace("Program shortcuts:");
             ConsoleWriteLineNoTrace("F1: print help");
-            ConsoleWriteLineNoTrace("F2: pause/resume print on screen");
+            ConsoleWriteLineNoTrace("F2: setup program");
             ConsoleWriteLineNoTrace("F3: toggle between data print format (HEX / ASCII)");
             ConsoleWriteLineNoTrace("F4: pause/resume connection to serial port");
             ConsoleWriteLineNoTrace("F5: send specified data (in HEX format if data start with 0x otherwise ASCII is send)");
@@ -1095,7 +1106,7 @@ namespace SerialMonitor
             ConsoleWriteLineNoTrace("F10: program exit");
             ConsoleWriteLineNoTrace("F11: toggle RTS pin");
             ConsoleWriteLineNoTrace("F12: toggle DTR pin");
-            ConsoleWriteLineNoTrace("^F12: setting");
+            ConsoleWriteLineNoTrace("^P: pause / resume print on screen");
 
             ConsoleWriteLineNoTrace("");
             ConsoleWriteLineNoTrace("In program commands:");
