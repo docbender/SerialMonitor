@@ -306,11 +306,11 @@ namespace SerialMonitor
                 UI.ActionHelp = () => { PrintHelp(); };
                 UI.ActionPrint = (print) => { pausePrint = !print; };
                 UI.ActionPrintAsHex = (hex) => { setting.ShowAscii = !hex; };
-                UI.ActionOpenClose = (close) => { pauseConnection = close; if (close) port.Close(); UI.SetPortStatus(port); };
+                UI.ActionOpenClose = (close) => { pauseConnection = close; if (close) port.Close(); UI.SetPortStatus(port); UI.SetPinStatus(port); };
                 UI.ActionSend = (data) => { UserDataSend(port,data); };
                 UI.ActionSendFile = (file) => { UserDataSendFile(port, file); };
-                UI.ActionRts = () => { port.RtsEnable = !port.RtsEnable; UI.SetPortStatus(port); };
-                UI.ActionDtr = () => { port.DtrEnable = !port.DtrEnable; UI.SetPortStatus(port); };
+                UI.ActionRts = () => { port.RtsEnable = !port.RtsEnable; UI.SetPortStatus(port); UI.SetPinStatus(port); };
+                UI.ActionDtr = () => { port.DtrEnable = !port.DtrEnable; UI.SetPortStatus(port); UI.SetPinStatus(port); };
                 UI.ActionCommand = (text) => { ProcessCommand(text); };
                 UI.ActionSettingLoad = () => { return setting; };
                 UI.ActionSettingSave = (setting) => { 
