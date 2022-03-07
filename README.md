@@ -7,7 +7,7 @@ Program is simple piece of software designed for serial port data monitoring tog
 
 Time between received data messages is displayed (in miliseconds). In addition to the printing on the screen it allows write everything (or just communication) to a specified file.
 
-Program supported .NET6. Program is running under Windows or Linux. Program isn't serial port sniffer so can't monitor port that is already open by another program.
+Program requires .NET6. Program is running under Windows and Linux. Program isn't serial port sniffer so can't monitor port that is already open by another program.
 
 ![](https://github.com/docbender/SerialMonitor/blob/master/img/SM3.png)
 
