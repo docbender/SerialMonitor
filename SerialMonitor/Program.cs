@@ -1107,9 +1107,9 @@ namespace SerialMonitor
             ConsoleWriteLineNoTrace("F5: send specified data (in HEX format if data start with 0x otherwise ASCII is send)");
             ConsoleWriteLineNoTrace("F6: send specified file)");
 
-            ConsoleWriteLineNoTrace("F10: program exit");
-            ConsoleWriteLineNoTrace("F11: toggle RTS pin");
-            ConsoleWriteLineNoTrace("F12: toggle DTR pin");
+            ConsoleWriteLineNoTrace("^Q: program exit");
+            ConsoleWriteLineNoTrace("F11 or ^1: toggle RTS pin");
+            ConsoleWriteLineNoTrace("F12 or ^2: toggle DTR pin");
             ConsoleWriteLineNoTrace("^P: pause / resume print on screen");
 
             ConsoleWriteLineNoTrace("");

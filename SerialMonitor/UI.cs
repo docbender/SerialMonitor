@@ -79,7 +79,7 @@ namespace SerialMonitor
             };
 
             // hotkeys
-            Application.QuitKey = Key.F10;
+            Application.QuitKey = Key.CtrlMask | Key.q;
             win.KeyUp += (e) =>
             {
                 e.Handled = ProcessHotKey(e.KeyEvent);
@@ -208,7 +208,7 @@ namespace SerialMonitor
         }
 
         private static bool ProcessHotKey(KeyEvent keyEvent)
-        {            
+        {
             if (keyEvent.Key == Key.F1)
             {
                 ActionHelp?.Invoke();
@@ -413,11 +413,11 @@ namespace SerialMonitor
                     // Send file data
                     ActionSendFile?.Invoke(FileHistory[fileList.SelectedItem]);
             }
-            else if (keyEvent.Key == Key.F11)
+            else if (keyEvent.Key == Key.F11 || keyEvent.Key == (Key.D1 | Key.CtrlMask))
             {
                 ActionRts?.Invoke();
             }
-            else if (keyEvent.Key == Key.F12)
+            else if (keyEvent.Key == Key.F12 || keyEvent.Key == (Key.D2 | Key.CtrlMask))
             {
                 ActionDtr?.Invoke();
             }
@@ -437,7 +437,7 @@ namespace SerialMonitor
 
         private static void SetBottomMenuText()
         {
-            menu.Text = $" F1 Help | F2 Setup | F3 {(!PrintAsHexToLogView ? "Hex " : "Text")} | F4 {(!RequestPortClose ? "Close" : "Open ")} | F5 Send | F6 SendFile | F10 Exit | F11 RTS | F12 DTR | ^P {(!PrintToLogView ? "Print" : "Pause")}";
+            menu.Text = $" F1 Help | F2 Setup | F3 {(!PrintAsHexToLogView ? "Hex " : "Text")} | F4 {(!RequestPortClose ? "Close" : "Open ")} | F5 Send | F6 SendFile | ^Q Exit | F11 RTS | F12 DTR | ^P {(!PrintToLogView ? "Print" : "Pause")}";
         }
 
         public static void Run(Func<MainLoop, bool> action)
