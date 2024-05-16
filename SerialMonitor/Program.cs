@@ -671,7 +671,7 @@ namespace SerialMonitor
                                     if (++linesWithData % 2 == 1)
                                         ask = regWhite.Replace(lines[i].Replace("0x", ""), "");
                                     else
-                                        repeaterMap.Add(ask, regWhite.Replace(lines[i].Replace("0x", ""), ""));
+                                        repeaterMap.TryAdd(ask, regWhite.Replace(lines[i].Replace("0x", ""), ""));
                                 }
                                 else
                                 {
