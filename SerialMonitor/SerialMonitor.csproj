@@ -2,20 +2,17 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net6.0</TargetFramework>
+    <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <Version>2.0.0.0</Version>
-    <FileVersion>2.0.0.0</FileVersion>
+    <Version>2.1.0.0</Version>
+    <FileVersion>2.1.0.24137</FileVersion>
     <InformationalVersion>2.0.0.0.myversion</InformationalVersion>    
   </PropertyGroup>
 
   <ItemGroup>
-  </ItemGroup>
-
-  <ItemGroup>
-    <PackageReference Include="System.IO.Ports" Version="6.0.0" />
-    <PackageReference Include="Terminal.Gui" Version="1.4.0" />
+    <PackageReference Include="System.IO.Ports" Version="8.0.0" />
+    <PackageReference Include="Terminal.Gui" Version="1.16.0" />
   </ItemGroup>
 
 </Project>
