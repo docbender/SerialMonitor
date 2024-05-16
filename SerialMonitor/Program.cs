@@ -544,6 +544,10 @@ namespace SerialMonitor
                     ConsoleWrite(new string(' ', waitText.Length + 5));
                     ConsoleCursorLeftReset();
                 }
+                else
+                {
+                    ConsoleWriteLine($" Port {port.PortName} opened");
+                }
 
                 // TODO: 
                 /*
