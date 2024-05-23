@@ -279,6 +279,10 @@ namespace SerialMonitor
                     {
                         hexvalue.Functions[i].Compute(value, i);
                     }
+                    else if (HexData.IsFunctionArea(hexvalue.MyProperty[i]))
+                    {
+                        continue;
+                    }
                     else
                     {
                         value[i] = Convert.ToByte(hexvalue.MyProperty[i] & 0xFF);
