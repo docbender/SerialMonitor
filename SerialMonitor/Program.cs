@@ -23,7 +23,8 @@ namespace SerialMonitor
         static long lastTimeReceved = 0;
         static bool repeaterEnabled = false;
         static bool repeaterUseHex = false;
-        static readonly Dictionary<string, string> repeaterMap = new Dictionary<string, string>();
+        static readonly Dictionary<string, string> repeaterStringMap = new Dictionary<string, string>();
+        static readonly HexDataCollection repeaterHexMap = new HexDataCollection();
         static bool logfile = false;
         static bool logincomingonly = false;
         static string logFilename = "";
@@ -386,7 +387,7 @@ namespace SerialMonitor
         }
 
         /// <summary>
-        /// Send tada typed by user
+        /// Send data typed by user
         /// </summary>
         /// <param name="port"></param>
         /// <param name="line"></param>
@@ -650,32 +651,35 @@ namespace SerialMonitor
 
                     ConsoleWriteLine($"File {fileName} opened and {lines.Length} lines has been read");
 
-                    repeaterMap.Clear();
+                    repeaterStringMap.Clear();
+                    repeaterHexMap.Clear();
 
                     //check format file
                     string startLine = lines[0];
                     int linesWithData = 0;
-                    string ask = "";
+                    
 
-                    Regex reg = new Regex("^(0x[0-9A-Fa-f]{1,2}\\s*)+$");
+                    Regex reg = new Regex(@"^(?!\s*$)(?:(0x[0-9A-Fa-f]{1,2})*|(\$\d+)*|(\#.+)*| )+$");
                     // match hex string
                     if (reg.IsMatch(startLine))
                     {
                         ConsoleWriteLine("First line corresponds hex format. File will be read and packets compared as HEX.");
-
-                        Regex regWhite = new Regex("\\s+");
-
+                        
+                        HexData ask = HexData.Create(startLine);
+                        ++linesWithData;
                         //check whole file
-                        for (int i = 0; i < lines.Length; i++)
+                        for (int i = 1; i < lines.Length; i++)
                         {
                             if (lines[i].Trim().Length > 0)
                             {
                                 if (reg.IsMatch(lines[i]))
                                 {
+                                    var data = HexData.Create(lines[i]);
+
                                     if (++linesWithData % 2 == 1)
-                                        ask = regWhite.Replace(lines[i].Replace("0x", ""), "");
+                                        ask = data;
                                     else
-                                        repeaterMap.TryAdd(ask, regWhite.Replace(lines[i].Replace("0x", ""), ""));
+                                        repeaterHexMap.TryAdd(ask, data);
                                 }
                                 else
                                 {
@@ -685,6 +689,7 @@ namespace SerialMonitor
                         }
 
                         repeaterUseHex = true;
+                        ConsoleWriteLine($"{repeaterHexMap.Count} pairs ask/answer ready");
                     }
                     else
                     {
@@ -693,7 +698,7 @@ namespace SerialMonitor
                         if (reg.IsMatch(startLine))
                         {                            
                             ConsoleWriteLine("First line corresponds hex format. File will be read and packets compared as HEX.");
-
+                            HexData ask = HexData.Create(startLine);
                             //check whole file
                             for (int i = 0; i < lines.Length; i++)
                             {
@@ -706,10 +711,11 @@ namespace SerialMonitor
 
                                     if (reg.IsMatch(lines[i]))
                                     {
+                                        var data = HexData.Create(lines[i]);
                                         if (++linesWithData % 2 == 1)
-                                            ask = lines[i];
+                                            ask = data;
                                         else
-                                            repeaterMap.Add(ask, lines[i]);
+                                            repeaterHexMap.TryAdd(ask, data);
                                     }
                                     else
                                     {
@@ -719,12 +725,13 @@ namespace SerialMonitor
                             }
 
                             repeaterUseHex = true;
+                            ConsoleWriteLine($"{repeaterHexMap.Count} pairs ask/answer ready");
                         }
                         else
                         {
                             // non hex string
                             ConsoleWriteLine("First line not corresponds hex format. File will be read and packets compared as ASCII.");
-
+                            string ask = string.Empty;
                             //check whole file
                             for (int i = 0; i < lines.Length; i++)
                             {
@@ -733,18 +740,18 @@ namespace SerialMonitor
                                     if (++linesWithData % 2 == 1)
                                         ask = lines[i];
                                     else
-                                        repeaterMap.Add(ask, lines[i]);
+                                        repeaterStringMap.TryAdd(ask, lines[i]);
                                 }
                             }
+
+                            ConsoleWriteLine($"{repeaterStringMap.Count} pairs ask/answer ready");
                         }
                     }
 
                     if (linesWithData % 2 == 1)
                         ConsoleWriteError($"Odd number of lines in file {fileName} with code. One line ask, one line answer.");
 
-                    repeaterEnabled = true;
-
-                    ConsoleWriteLine($"{repeaterMap.Count} pairs ask/answer ready");
+                    repeaterEnabled = true;                   
                 }
                 catch (Exception ex)
                 {
@@ -878,17 +885,11 @@ namespace SerialMonitor
         {
             if (repeaterUseHex)
             {
-                string ask = string.Join("", incoming.Take(byteCount).Select(x => x.ToString("X2")));
+                //HexData ask = string.Join("", incoming.Take(byteCount).Select(x => x.ToString("X2")));
 
-                if (repeaterMap.ContainsKey(ask))
+                if (repeaterHexMap.TryGetValue(incoming, byteCount, out var answer))
                 {
-                    string answer = repeaterMap[ask];
-                    byte[] data = new byte[answer.Length / 2];
-
-                    for (int i = 0; i < data.Length; i++)
-                    {
-                        data[i] = Convert.ToByte(answer.Substring(2 * i, 2), 16);
-                    }
+                    var data = answer;
 
                     if (!setting.ShowTime)
                         ConsoleWriteCommunication(ConsoleColor.Green, string.Join("\n ", Array.ConvertAll(data, x => $"0x{x:X2}")));
@@ -906,9 +907,9 @@ namespace SerialMonitor
             {
                 string ask = ASCIIEncoding.ASCII.GetString(incoming,0,byteCount);
 
-                if (repeaterMap.ContainsKey(ask))
+                if (repeaterStringMap.ContainsKey(ask))
                 {
-                    string answer = repeaterMap[ask];
+                    string answer = repeaterStringMap[ask];
 
                     if (!setting.ShowTime)
                         ConsoleWriteCommunication(ConsoleColor.Green, "\n" + answer);
