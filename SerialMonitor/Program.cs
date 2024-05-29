@@ -12,14 +12,13 @@ using System.Diagnostics;
 using System.IO.Ports;
 using System.Text;
 using System.Text.RegularExpressions;
-using static Terminal.Gui.Graphs.PathAnnotation;
 
 namespace SerialMonitor
 {
     class Program
     {
         static readonly ArgumentCollection arguments = new ArgumentCollection(new string[] { "baudrate", "parity", "databits", "stopbits",
-         "repeatfile", "logfile", "logincomingonly", "showascii", "notime", "gaptolerance", "continuousmode", "nogui" });
+         "repeatfile", "logfile", "logincomingonly", "showascii", "notime", "gaptolerance", "continuousmode", "nogui", "service" });
         static readonly string? version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3);
         static long lastTimeReceved = 0;
         static bool repeaterEnabled = false;
@@ -28,11 +27,16 @@ namespace SerialMonitor
         static readonly HexDataCollection repeaterHexMap = new HexDataCollection();
         static bool logfile = false;
         static bool logincomingonly = false;
-        static string logFilename = "";
+        // default log file name
+        static readonly string logSystemFilename = logDataFilename = Path.Combine(OperatingSystem.IsLinux() ? "/var/log/serialmonitor" : Directory.GetCurrentDirectory(), "serialmonitor.log");
+        static string logDataFilename = $"log_{DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss")}.txt";
         static int gapTolerance = 0;
         static bool gapToleranceEnable = false;
         static bool continuousMode = false;
+        static bool serviceMode = false;
         static FileSystemWatcher? _watcher;
+        static readonly TraceSource trace = new TraceSource("System");
+        static readonly TraceSource traceData = new TraceSource("Data");
         /// <summary>
         /// Flag for stop printing communication data. Log into file will continue.
         /// </summary>
@@ -61,7 +65,7 @@ namespace SerialMonitor
         static void Main(string[] args)
         {
             DateTime lastTry = DateTime.MinValue;
-            setting.Port = System.OperatingSystem.IsWindows() ? "COM1" : "/dev/ttyS1";
+            setting.Port = OperatingSystem.IsWindows() ? "COM1" : "/dev/ttyS1";
 
             if (args.Length > 0)
             {
@@ -93,14 +97,24 @@ namespace SerialMonitor
                 }
 
             }
+
+            trace.Switch = new SourceSwitch("SourceSwitch", "All");
+            trace.Switch.Level = SourceLevels.All;
+            trace.Listeners.Clear();
+            trace.Listeners.Add(new System.Diagnostics.TextWriterTraceListener(logSystemFilename, "System"));
+
             // parse commandline arguments
             arguments.Parse(args);
 
-            continuousMode = arguments.GetArgument("continuousmode").Enabled || arguments.GetArgument("nogui").Enabled;
+            continuousMode = arguments.GetArgument("continuousmode").Enabled
+                || arguments.GetArgument("nogui").Enabled
+                || arguments.GetArgument("service").Enabled;
+
+            serviceMode = arguments.GetArgument("service").Enabled;
 
             if (!continuousMode)
                 UI.Init();
-            else
+            else if (!serviceMode)
                 ConsoleWriteLineNoTrace($"SerialMonitor v.{version}");
 
             setting.BaudRate = 9600;
@@ -180,11 +194,11 @@ namespace SerialMonitor
             {
                 if (arg.Parameter.Length == 0)
                 {
-                    logFilename = "log_" + DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss") + ".txt";
-                    ConsoleWriteLine("Warning: Log file name not specified. Used " + logFilename);
+                    if (!serviceMode)
+                        ConsoleWriteLine(TraceEventType.Warning, "Warning: Log file name not specified. Used " + logDataFilename);
                 }
                 else
-                    logFilename = arg.Parameter;
+                    logDataFilename = arg.Parameter;
 
                 logfile = true;
             }
@@ -194,9 +208,8 @@ namespace SerialMonitor
                 if (!logfile)
                 {
                     logfile = true;
-                    logFilename = "log_" + DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss") + ".txt";
-                    ConsoleWriteLine("Warning: Parameter logfile not specified. Log enabled to the file: " + logFilename);
-                    logfile = true;
+                    if (!serviceMode)
+                        ConsoleWriteLine(TraceEventType.Warning, "Warning: Parameter logfile not specified. Log enabled to the file: " + logDataFilename);
                 }
                 logincomingonly = true;
             }
@@ -208,44 +221,49 @@ namespace SerialMonitor
                 _ = int.TryParse(arg.Parameter, out gapTolerance);
 
                 if (gapTolerance == 0)
-                    ConsoleWriteLine("Warning: Parameter gaptolerance has invalid argument. Gap tolerance must be greater than zero.");
+                    ConsoleWriteLine(TraceEventType.Warning, "Warning: Parameter gaptolerance has invalid argument. Gap tolerance must be greater than zero.");
                 else
                     gapToleranceEnable = true;
             }
 
-
             if (logfile)
             {
                 //check path
-                string? path = System.IO.Path.GetDirectoryName(logFilename);
+                string? path = Path.GetDirectoryName(logDataFilename);
                 if (path?.Length > 0)
                 {
-                    if (!System.IO.Directory.Exists(path))
+                    if (!Directory.Exists(path))
                         try
                         {
-                            System.IO.Directory.CreateDirectory(path);
+                            Directory.CreateDirectory(path);
                         }
                         catch (Exception ex)
                         {
-                            ConsoleWriteLine($"Warning: Cannot create directory {path}. {ex.Message}");
+                            ConsoleWriteLine(TraceEventType.Warning, $"Warning: Cannot create directory {path}. {ex.Message}");
                         }
                 }
                 else
                 {
-                    logFilename = System.IO.Directory.GetCurrentDirectory() + "\\" + logFilename;
+                    if (OperatingSystem.IsLinux())
+                        logDataFilename = Path.Combine("/var/log/serialmonitor", logDataFilename);
+                    else
+                        logDataFilename = Path.Combine(Directory.GetCurrentDirectory(), logDataFilename);
                 }
 
-                if (!IsFileNameValid(logFilename))
+                if (!IsFileNameValid(logDataFilename))
                 {
-                    ConsoleWriteLine("\nPress [Enter] to exit");
-                    Console.ReadLine();
-
+                    if (!serviceMode)
+                    {
+                        ConsoleWriteLine("\nPress [Enter] to exit");
+                        Console.ReadLine();
+                    }
                     return;
                 }
 
                 //assign file to listener
-                if (Trace.Listeners["Default"] is DefaultTraceListener listener)
-                    listener.LogFileName = logFilename;
+                traceData.Switch = new SourceSwitch("SourceSwitch", "All");
+                traceData.Listeners.Clear();
+                traceData.Listeners.Add(new System.Diagnostics.TextWriterTraceListener(logDataFilename, "Data"));
             }
 
             /*
@@ -263,15 +281,17 @@ namespace SerialMonitor
             {
                 if (!IsFileNameValid(repeatfile.Parameter))
                 {
-                    ConsoleWriteLine("\nPress [Enter] to exit");
-                    Console.ReadLine();
-
+                    if (!serviceMode)
+                    {
+                        ConsoleWriteLine("\nPress [Enter] to exit");
+                        Console.ReadLine();
+                    }
                     return;
                 }
                 PrepareRepeatFile(repeatfile.Parameter);
             }
 
-            ConsoleWriteLine($"Opening port {port.PortName}: baudrate={port.BaudRate}b/s, parity={port.Parity}, databits={port.DataBits}, stopbits={port.StopBits}");
+            ConsoleWriteLine(TraceEventType.Information, $"Opening port {port.PortName}: baudrate={port.BaudRate}b/s, parity={port.Parity}, databits={port.DataBits}, stopbits={port.StopBits}");
 
             bool exit = false;
 
@@ -290,6 +310,7 @@ namespace SerialMonitor
                 UI.FileHistory.AddRange(fileList);
                 fileList = null;
             }
+            trace.Flush();
 
             if (continuousMode)
             {
@@ -362,6 +383,8 @@ namespace SerialMonitor
             }
 
             _watcher?.Dispose();
+            trace.Flush();
+            trace.Close();
         }
 
         /// <summary>
@@ -614,7 +637,7 @@ namespace SerialMonitor
         /// <returns></returns>
         private static bool IsFileNameValid(string filePath)
         {
-            foreach (char c in System.IO.Path.GetInvalidPathChars())
+            foreach (char c in Path.GetInvalidPathChars())
             {
                 if (filePath.Contains(c.ToString()))
                 {
@@ -624,9 +647,9 @@ namespace SerialMonitor
                 }
             }
 
-            foreach (char c in System.IO.Path.GetInvalidFileNameChars())
+            foreach (char c in Path.GetInvalidFileNameChars())
             {
-                if (System.IO.Path.GetFileName(filePath).Contains(c.ToString()))
+                if (Path.GetFileName(filePath).Contains(c.ToString()))
                 {
                     ConsoleWriteError($"File name {filePath} contains invalid character [{c}]. Enter right file name.");
 
@@ -658,7 +681,6 @@ namespace SerialMonitor
             {
                 _watcher!.EnableRaisingEvents = true;
             }
-
         }
 
         /// <summary>
@@ -858,7 +880,7 @@ namespace SerialMonitor
             TimeSpan time = DateTime.Now.TimeOfDay;
             bool applyGapTolerance = false;
 
-            //print time since last receive only if not disabled
+            // print time since last receive only if not disabled
             if (lastTimeReceved > 0)
             {
                 double sinceLastReceive = ((double)(time.Ticks - lastTimeReceved) / 10000);
@@ -868,7 +890,7 @@ namespace SerialMonitor
                     ConsoleWriteCommunication(ConsoleColor.Magenta, "\n+" + sinceLastReceive.ToString("F3") + " ms");
             }
 
-            //Write to output
+            // Write to output
             string line = "";
 
             if (setting.ShowAscii)
@@ -940,7 +962,7 @@ namespace SerialMonitor
                 }
                 else
                 {
-                    ConsoleWriteLine("Repeater: Unknown ask");
+                    ConsoleWriteLineNoTrace("Repeater: Unknown ask");
                 }
             }
             else
@@ -960,7 +982,7 @@ namespace SerialMonitor
                 }
                 else
                 {
-                    ConsoleWriteLine("Repeater: Unknown ask");
+                    ConsoleWriteLineNoTrace("Repeater: Unknown ask");
                 }
             }
 
@@ -973,7 +995,7 @@ namespace SerialMonitor
         /// <param name="text"></param>
         private static void ConsoleWriteError(string text)
         {
-            ConsoleWriteLine(ConsoleColor.Red, text);
+            ConsoleWriteLine(TraceEventType.Error, text);
         }
 
         /// <summary>
@@ -984,11 +1006,8 @@ namespace SerialMonitor
         {
             if (!continuousMode)
                 UI.Write(message);
-            else
+            else if (!serviceMode)
                 Console.Write(message);
-
-            if (logfile && !logincomingonly)
-                Trace.Write(message);
         }
 
         /// <summary>
@@ -1001,15 +1020,16 @@ namespace SerialMonitor
             {
                 UI.WriteLine(message);
             }
-            else
+            else if (!serviceMode)
             {
                 if (Console.CursorLeft > 0)
                     Console.WriteLine("");
                 Console.WriteLine(message);
             }
-
-            if (logfile && !logincomingonly)
-                Trace.WriteLine(string.Format(message));
+            else
+            {
+                Trace(TraceEventType.Information, message);
+            }
         }
 
         /// <summary>
@@ -1017,21 +1037,30 @@ namespace SerialMonitor
         /// </summary>
         /// <param name="color"></param>
         /// <param name="message"></param>
-        private static void ConsoleWriteLine(ConsoleColor color, string message)
+        private static void ConsoleWriteLine(TraceEventType eventType, string message)
         {
             if (!continuousMode)
             {
-                UI.WriteLine(message, color);
+                UI.WriteLine(message,
+                    eventType == TraceEventType.Critical ? ConsoleColor.DarkRed
+                    : eventType == TraceEventType.Error ? ConsoleColor.Red
+                    : eventType == TraceEventType.Warning ? ConsoleColor.Yellow
+                    : ConsoleColor.White
+                    );
             }
-            else
+            else if (!serviceMode || eventType <= TraceEventType.Information)
             {
-                Console.ForegroundColor = color;
+                Console.ForegroundColor = eventType == TraceEventType.Critical ? ConsoleColor.DarkRed
+                    : eventType == TraceEventType.Error ? ConsoleColor.Red
+                    : eventType == TraceEventType.Warning ? ConsoleColor.Yellow
+                    : ConsoleColor.White;
                 Console.WriteLine(message);
                 Console.ResetColor();
             }
-
-            if (logfile && !logincomingonly)
-                Trace.WriteLine(string.Format(message));
+            else
+            {
+                Trace(eventType, message);
+            }
         }
 
         /// <summary>
@@ -1042,7 +1071,7 @@ namespace SerialMonitor
         {
             if (!continuousMode)
                 UI.WriteLine(message);
-            else
+            else if (!serviceMode)
                 Console.WriteLine(message);
         }
 
@@ -1057,7 +1086,7 @@ namespace SerialMonitor
             {
                 UI.WriteLine(message, color);
             }
-            else
+            else if (!serviceMode)
             {
                 Console.ForegroundColor = color;
                 Console.WriteLine(message);
@@ -1078,7 +1107,7 @@ namespace SerialMonitor
                 {
                     UI.Write(message, color);
                 }
-                else
+                else if (!serviceMode)
                 {
                     Console.ForegroundColor = color;
                     ConsoleWrite(message);
@@ -1087,7 +1116,11 @@ namespace SerialMonitor
             }
 
             if (logfile)
-                Trace.Write(string.Format(message));
+            {
+                // log all received data (yellov color) or others if enabled
+                if(!logincomingonly || color == ConsoleColor.Yellow)
+                    TraceData(string.Format(message));
+            }
         }
 
         /// <summary>
@@ -1097,9 +1130,13 @@ namespace SerialMonitor
         private static void ConsoleCursorLeft(int moveBy)
         {
             if (continuousMode)
-                Console.CursorLeft += moveBy;
-            //else
-            //    Cinout.CursorLeft(moveBy);
+            {
+                var newposition = Console.CursorLeft + moveBy;
+                if (newposition > 0 && newposition < Console.BufferWidth)
+                {
+                    Console.CursorLeft += moveBy;
+                }
+            }
         }
 
         /// <summary>
@@ -1109,8 +1146,6 @@ namespace SerialMonitor
         {
             if (continuousMode)
                 Console.CursorLeft = 0;
-            //else
-            //    Cinout.CursorLeftReset();
         }
 
         /// <summary>
@@ -1132,7 +1167,8 @@ namespace SerialMonitor
             ConsoleWriteLineNoTrace("-showascii: communication would be show in ASCII format (otherwise HEX is used)");
             ConsoleWriteLineNoTrace("-notime: time information about incoming data would not be printed");
             ConsoleWriteLineNoTrace("-gaptolerance {{time gap in ms}}: messages received within specified time gap will be printed together");
-            ConsoleWriteLineNoTrace("-nogui: start program in normal console mode (scrolling list). Not with primitive text GUI");
+            ConsoleWriteLineNoTrace("-nogui: start program in normal console mode (scrolling list). Not with text GUI");
+            ConsoleWriteLineNoTrace("-service: start program in normal console mode with minimal verbose");
 
             ConsoleWriteLineNoTrace("");
             ConsoleWriteLineNoTrace("Example: serialmonitor COM1");
@@ -1185,7 +1221,39 @@ namespace SerialMonitor
             Config.SaveHistory(UI.CommandHistory);
             Config.SaveFileList(UI.FileHistory);
 
+            trace.Close();
             UI.Exit();
+        }
+
+        /// <summary>
+        /// Log system message
+        /// </summary>
+        /// <param name="eventType"></param>
+        /// <param name="message"></param>
+        private static void Trace(TraceEventType eventType, string message)
+        {
+            if (trace.Switch.ShouldTrace(eventType))
+            {
+                string tracemessage = $"{DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.FFF")}\t[{eventType}]\t{string.Format(message)}";
+                foreach (TraceListener listener in trace.Listeners)
+                {
+                    listener.WriteLine(tracemessage);
+                    listener.Flush();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Log data message
+        /// </summary>
+        /// <param name="message"></param>
+        private static void TraceData(string message)
+        {
+            foreach (TraceListener listener in traceData.Listeners)
+            {
+                listener.WriteLine(message);
+                listener.Flush();
+            }
         }
     }
 }
