@@ -1,8 +1,12 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿//---------------------------------------------------------------------------
+//
+// Name:        IFunction.cs
+// Author:      Vita Tucek
+// Created:     23.5.2024
+// License:     MIT
+// Description: Functions interface
+//
+//---------------------------------------------------------------------------
 
 namespace SerialMonitor.Functions
 {
