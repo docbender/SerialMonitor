@@ -431,12 +431,12 @@ namespace SerialMonitor
             bool hex = false;
             byte[] data;
 
-            if (line.StartsWith("0x", StringComparison.InvariantCultureIgnoreCase))
+            if (line.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
                 hex = true;
 
             if (hex)
             {
-                string prepared = line.Replace("0x", "");
+                string prepared = line.Replace("0x", "", StringComparison.OrdinalIgnoreCase);
                 Regex reg = new Regex("^([0-9A-Fa-f]{1,2}\\s*)+$");
 
                 if (!reg.IsMatch(prepared))
@@ -709,19 +709,28 @@ namespace SerialMonitor
                     string[] lines = File.ReadAllLines(fileName);
 
                     if (lines.Length == 0)
-                        ConsoleWriteError($"Zero lines in file {fileName}");
+                    {
+                        ConsoleWriteError($"No line in file {fileName}");
+                        return;
+                    }
 
                     ConsoleWriteLine($"File {fileName} opened and {lines.Length} lines has been read");
 
                     repeaterStringMap.Clear();
                     repeaterHexMap.Clear();
 
-                    //check format file
-                    string startLine = lines[0];
+                    // check format file
+                    // first line without comment
+                    string? startLine = lines.FirstOrDefault(x => !x.Trim().StartsWith('#'));
+                    if (startLine == null)
+                    {
+                        ConsoleWriteError($"No line without comment ('#') in file {fileName}");
+                        return;
+                    }
+
                     int linesWithData = 0;
 
-
-                    Regex reg = new Regex(@"^(?!\s*$)(?:(0x[0-9A-Fa-f]{1,2})*|(\$\d+)*|(\#.+)*| )+$");
+                    Regex reg = new Regex(@"^(?!\s*$)(?:(0x[0-9A-Fa-f]{1,2})*|(\$\d+)*|(\@.+)*| )+$");
                     // match hex string
                     if (reg.IsMatch(startLine))
                     {
@@ -732,21 +741,23 @@ namespace SerialMonitor
                         //check whole file
                         for (int i = 1; i < lines.Length; i++)
                         {
-                            if (lines[i].Trim().Length > 0)
-                            {
-                                if (reg.IsMatch(lines[i]))
-                                {
-                                    var data = HexData.Create(lines[i]);
+                            var line = lines[i].Trim();
+                            // empty or commented line
+                            if (line.Length == 0 || line.StartsWith('#'))
+                                continue;
 
-                                    if (++linesWithData % 2 == 1)
-                                        ask = data;
-                                    else
-                                        repeaterHexMap.TryAdd(ask, data);
-                                }
+                            if (reg.IsMatch(line))
+                            {
+                                var data = HexData.Create(line);
+
+                                if (++linesWithData % 2 == 1)
+                                    ask = data;
                                 else
-                                {
-                                    throw new RepeatFileException("Line {0} not coresponds to hex format.", i);
-                                }
+                                    repeaterHexMap.TryAdd(ask, data);
+                            }
+                            else
+                            {
+                                throw new RepeatFileException("Line {0} not coresponds to hex format.", i);
                             }
                         }
 
@@ -764,25 +775,27 @@ namespace SerialMonitor
                             //check whole file
                             for (int i = 0; i < lines.Length; i++)
                             {
-                                if (lines[i].Trim().Length > 0)
-                                {
-                                    if (lines[i].Length % 2 == 1)
-                                    {
-                                        throw new RepeatFileException("Line {0} has odd number of characters.", i);
-                                    }
+                                var line = lines[i].Trim();
+                                // empty or commented line
+                                if (line.Length == 0 || line.StartsWith('#'))
+                                    continue;
 
-                                    if (reg.IsMatch(lines[i]))
-                                    {
-                                        var data = HexData.Create(lines[i]);
-                                        if (++linesWithData % 2 == 1)
-                                            ask = data;
-                                        else
-                                            repeaterHexMap.TryAdd(ask, data);
-                                    }
+                                if (line.Length % 2 == 1)
+                                {
+                                    throw new RepeatFileException("Line {0} has odd number of characters.", i);
+                                }
+
+                                if (reg.IsMatch(line))
+                                {
+                                    var data = HexData.Create(line);
+                                    if (++linesWithData % 2 == 1)
+                                        ask = data;
                                     else
-                                    {
-                                        throw new RepeatFileException("Line {0} not coresponds to hex format.", i);
-                                    }
+                                        repeaterHexMap.TryAdd(ask, data);
+                                }
+                                else
+                                {
+                                    throw new RepeatFileException("Line {0} not coresponds to hex format.", i);
                                 }
                             }
 
@@ -797,13 +810,14 @@ namespace SerialMonitor
                             //check whole file
                             for (int i = 0; i < lines.Length; i++)
                             {
-                                if (lines[i].Trim().Length > 0)
-                                {
-                                    if (++linesWithData % 2 == 1)
-                                        ask = lines[i];
-                                    else
-                                        repeaterStringMap.TryAdd(ask, lines[i]);
-                                }
+                                var line = lines[i].Trim();
+                                // empty or commented line
+                                if (line.Length == 0 || line.StartsWith('#'))
+                                    continue;
+                                if (++linesWithData % 2 == 1)
+                                    ask = line;
+                                else
+                                    repeaterStringMap.TryAdd(ask, line);
                             }
 
                             ConsoleWriteLine($"{repeaterStringMap.Count} pairs ask/answer ready");
@@ -815,10 +829,15 @@ namespace SerialMonitor
 
                     repeaterEnabled = true;
                 }
+                catch (FormatException ex)
+                {
+                    ConsoleWriteError($"Format mismatch in file {fileName}");
+                    ConsoleWriteError(ex.Message);
+                }
                 catch (Exception ex)
                 {
                     ConsoleWriteError($"Cannot read file {fileName}");
-                    ConsoleWriteError(ex.ToString());
+                    ConsoleWriteError(ex.Message);
                 }
             }
         }
@@ -962,7 +981,7 @@ namespace SerialMonitor
                 }
                 else
                 {
-                    ConsoleWriteLineNoTrace("Repeater: Unknown ask");
+                    ConsoleWriteLineNoTrace("\nRepeater: Unknown ask");
                 }
             }
             else
@@ -1118,7 +1137,7 @@ namespace SerialMonitor
             if (logfile)
             {
                 // log all received data (yellov color) or others if enabled
-                if(!logincomingonly || color == ConsoleColor.Yellow)
+                if (!logincomingonly || color == ConsoleColor.Yellow)
                     TraceData(string.Format(message));
             }
         }
@@ -1181,8 +1200,8 @@ namespace SerialMonitor
             ConsoleWriteLineNoTrace("F2: setup program");
             ConsoleWriteLineNoTrace("F3: toggle between data print format (HEX / ASCII)");
             ConsoleWriteLineNoTrace("F4: pause/resume connection to serial port");
-            ConsoleWriteLineNoTrace("F5: send specified data (in HEX format if data start with 0x otherwise ASCII is send)");
-            ConsoleWriteLineNoTrace("F6: send specified file)");
+            ConsoleWriteLineNoTrace("F5: send a data (in HEX format if data start with 0x otherwise ASCII is send)");
+            ConsoleWriteLineNoTrace("F6: send a file");
 
             ConsoleWriteLineNoTrace("^Q: program exit");
             ConsoleWriteLineNoTrace("F11 or ^1: toggle RTS pin");
@@ -1193,6 +1212,7 @@ namespace SerialMonitor
             ConsoleWriteLineNoTrace("In program commands:");
             ConsoleWriteLineNoTrace("help: print help");
             ConsoleWriteLineNoTrace("send <message>: send message");
+            ConsoleWriteLineNoTrace("exit: exit the program");
 
             if (continuousMode)
             {
