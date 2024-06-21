@@ -6,13 +6,96 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <Version>2.1.0.0</Version>
-    <FileVersion>2.1.0.24137</FileVersion>
-    <InformationalVersion>2.0.0.0.myversion</InformationalVersion>    
+    <FileVersion>2.1.0.24173</FileVersion>
+    <InformationalVersion>2.0.0.0.myversion</InformationalVersion>
+    <AssemblyName>$(AssemblyName)</AssemblyName>
+    <ErrorReport>none</ErrorReport>
+    <PublishTrimmed>True</PublishTrimmed>    
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <DebugType>portable</DebugType>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
+    <DebugType>portable</DebugType>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="System.IO.Ports" Version="8.0.0" />
     <PackageReference Include="Terminal.Gui" Version="1.16.0" />
   </ItemGroup>
+    
+  <Choose>
+     <When Condition=" $(RuntimeIdentifier) == 'linux-arm' ">
+         <PropertyGroup>
+             <Arch>armhf</Arch>                
+         </PropertyGroup>
+     </When>
+     <When Condition=" $(RuntimeIdentifier) == 'linux-arm64' ">
+         <PropertyGroup>
+             <Arch>arm64</Arch>                
+         </PropertyGroup>
+     </When>
+     <When Condition=" $(RuntimeIdentifier) == 'linux-x64' ">
+         <PropertyGroup>
+             <Arch>amd64</Arch>                
+         </PropertyGroup>
+     </When>        
+  </Choose>
+    
+  <Target Name="CustomActionsPublish" AfterTargets="Publish" Condition=" $(RuntimeIdentifier) == 'linux-arm' Or $(RuntimeIdentifier) == 'linux-arm64' Or $(RuntimeIdentifier) == 'linux-x64' ">
+    <Message Text="Creating deb file..." Importance="high" />
+    <ItemGroup>
+        <SourceFiles Include="$(OutputPath)**\*.*" />
+        <FilesToDelete Include="$(BaseOutputPath)deb\**\*.*" />
+        <ConfigFiles Include="$(MSBuildProjectDirectory)\Resources\config\**\*.*" />
+    </ItemGroup>
+         
+    <MakeDir Directories="$(BaseOutputPath)deb" />
+    <MakeDir Directories="$(BaseOutputPath)deb\DEBIAN" />
+    <MakeDir Directories="$(BaseOutputPath)deb\lib\systemd\system" Condition="Exists('$(MSBuildProjectDirectory)\Resources\serialmonitor.service')" />
+    <MakeDir Directories="$(BaseOutputPath)deb\usr\share\serialmonitor" Condition="!Exists('$(BaseOutputPath)deb\usr\share\serialmonitor')" />
+    <MakeDir Directories="$(BaseOutputPath)deb\etc\serialmonitor" />
+    <MakeDir Directories="$(BaseOutputPath)deb\var\log\serialmonitor" /> 
+    
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\Resources\control" DestinationFolder="$(BaseOutputPath)deb\DEBIAN" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\Resources\prerm" DestinationFolder="$(BaseOutputPath)deb\DEBIAN" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\Resources\postrm" DestinationFolder="$(BaseOutputPath)deb\DEBIAN" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\Resources\postinst" DestinationFolder="$(BaseOutputPath)deb\DEBIAN" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\Resources\changelog.Debian" DestinationFolder="$(BaseOutputPath)deb\usr\share\doc\serialmonitor" />       
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\Resources\serialmonitor.service" DestinationFolder="$(BaseOutputPath)deb\lib\systemd\system" Condition="Exists('$(MSBuildProjectDirectory)\Resources\serialmonitor.service')" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\Resources\copyright" DestinationFolder="$(BaseOutputPath)deb\usr\share\doc\serialmonitor" />
+    <Copy SourceFiles="@(ConfigFiles)" DestinationFolder="$(BaseOutputPath)deb\etc\serialmonitor">
+        <Output TaskParameter="CopiedFiles" ItemName="ConfigFileList" />
+    </Copy>
+    <Copy SourceFiles="@(SourceFiles)" DestinationFolder="$(BaseOutputPath)deb\usr\share\serialmonitor\%(RecursiveDir)" />     
+    <Delete Files="$(BaseOutputPath)deb\usr\share\serialmonitor\SerialMonitor.pdb" />
+    
+    <WriteLinesToFile File="$(BaseOutputPath)deb\DEBIAN\control" Lines="Architecture: $(Arch)" />
+    <WriteLinesToFile File="$(BaseOutputPath)deb\DEBIAN\control" Lines="Depends: dotnet-runtime-8.0" Condition=" $(RuntimeIdentifier) == 'linux-x64' " />
+    <Exec Command="wsl du -ks bin/deb" ConsoleToMsBuild="true">
+        <Output TaskParameter="ConsoleOutput" PropertyName="PackageSize" />
+    </Exec>
+    <WriteLinesToFile File="$(BaseOutputPath)deb\DEBIAN\control" Lines="Installed-Size: $(PackageSize.Replace('bin/deb', ''))" />         
 
+    <Exec Command="wsl gzip --best -nf bin/deb/usr/share/doc/serialmonitor/changelog.Debian" />
+                                                                                       
+    <Exec Command="wsl find bin/deb/etc/serialmonitor/ -type f &gt; bin/deb/DEBIAN/conffiles" />
+    <Exec Command="wsl sed -i 's/bin\/deb//' bin/deb/DEBIAN/conffiles" />           
+    <Exec Command="wsl chmod -R 755 bin/deb/DEBIAN" />
+    <Exec Command="wsl chmod 644 bin/deb/DEBIAN/conffiles" />
+    <Exec Command="wsl chmod -R 755 bin/deb/etc" />
+    <Exec Command="wsl chmod 755 bin/deb/lib/systemd/system/serialmonitor.service" Condition="Exists('$(MSBuildProjectDirectory)\Resources\serialmonitor.service')" />
+    <Exec Command="wsl find bin/deb/usr/share/serialmonitor/ -type d -exec chmod 755 {} \;" />
+    <Exec Command="wsl find bin/deb/usr/share/serialmonitor/ -type f -exec chmod 644 {} \;" />
+    <Exec Command="wsl find bin/deb/usr/share/doc/serialmonitor -type f -exec chmod 644 {} \;" />    
+    <Exec Command="wsl chmod 755 bin/deb/usr/share/serialmonitor/SerialMonitor" />
+
+    <Exec Command="wsl dpkg-deb --root-owner-group --build bin/deb bin/serialmonitor.$(Arch).deb" />
+
+    <Delete Files="@(FilesToDelete)" />    
+    
+    <Message Text="Creating deb file finished" Importance="high" />
+  </Target>  
 </Project>
