@@ -47,7 +47,7 @@ namespace SerialMonitor
             ArgumentNullException.ThrowIfNull(data);
 
             var hexData = new HexData();
-            var trimmed = data.Trim().Replace("0x", "");
+            var trimmed = data.Trim().Replace("0x", "", StringComparison.OrdinalIgnoreCase);
 
             // delimited
             if (regWhite.IsMatch(trimmed))
@@ -55,7 +55,7 @@ namespace SerialMonitor
                 var bytes = regWhite.Split(trimmed);
 
                 var functions = bytes.Select((x, i) => new { Index = i, Item = x })
-                    .Where(x => x.Item.StartsWith('#')).Select(x => new { x.Index, Item = x.Item[1..] });
+                    .Where(x => x.Item.StartsWith('@')).Select(x => new { x.Index, Item = x.Item[1..] });
 
                 if (!functions.Any())
                 {
