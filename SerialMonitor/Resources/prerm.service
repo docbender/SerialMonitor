@@ -2,5 +2,6 @@
 
 CMD=$1
 if [ $CMD=="remove" ] || [ $CMD=="upgrade" ]; then
+    systemctl stop serialmonitor
     rm /usr/bin/serialmonitor
 fi
