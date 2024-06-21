@@ -23,7 +23,7 @@
 
   <ItemGroup>
     <PackageReference Include="System.IO.Ports" Version="8.0.0" />
-    <PackageReference Include="Terminal.Gui" Version="1.16.0" />
+    <PackageReference Include="Terminal.Gui" Version="1.17.0" />
   </ItemGroup>
     
   <Choose>
