@@ -1,0 +1,6 @@
+serialmonitor (2.1.0-1) stretch; urgency=medium
+
+  * Possibility to use variables in repeat file
+  * Fix loading repeat file
+
+ -- VitaTucek <vita@whatever.com>  Mon, 27 May 2024 12:00:00 +0200
