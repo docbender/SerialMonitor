@@ -48,7 +48,6 @@
     <Message Text="Creating deb file..." Importance="high" />
     <ItemGroup>
         <SourceFiles Include="$(OutputPath)**\*.*" />
-        <FilesToDelete Include="$(BaseOutputPath)deb\**\*.*" />
         <ConfigFiles Include="$(MSBuildProjectDirectory)\Resources\config\**\*.*" />
     </ItemGroup>
          
@@ -60,9 +59,13 @@
     <MakeDir Directories="$(BaseOutputPath)deb\var\log\serialmonitor" /> 
     
     <Copy SourceFiles="$(MSBuildProjectDirectory)\Resources\control" DestinationFolder="$(BaseOutputPath)deb\DEBIAN" />
-    <Copy SourceFiles="$(MSBuildProjectDirectory)\Resources\prerm" DestinationFolder="$(BaseOutputPath)deb\DEBIAN" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\Resources\prerm" DestinationFolder="$(BaseOutputPath)deb\DEBIAN" Condition="!Exists('$(MSBuildProjectDirectory)\Resources\serialmonitor.service')" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\Resources\prerm.service" DestinationFolder="$(BaseOutputPath)deb\DEBIAN" Condition="Exists('$(MSBuildProjectDirectory)\Resources\serialmonitor.service')" />
+    <Move SourceFiles="$(BaseOutputPath)deb\DEBIAN\prerm.service" DestinationFiles="$(BaseOutputPath)deb\DEBIAN\prerm" Condition="Exists('$(MSBuildProjectDirectory)\Resources\serialmonitor.service')" />    
     <Copy SourceFiles="$(MSBuildProjectDirectory)\Resources\postrm" DestinationFolder="$(BaseOutputPath)deb\DEBIAN" />
-    <Copy SourceFiles="$(MSBuildProjectDirectory)\Resources\postinst" DestinationFolder="$(BaseOutputPath)deb\DEBIAN" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\Resources\postinst" DestinationFolder="$(BaseOutputPath)deb\DEBIAN" Condition="!Exists('$(MSBuildProjectDirectory)\Resources\serialmonitor.service')" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\Resources\postinst.service" DestinationFolder="$(BaseOutputPath)deb\DEBIAN" Condition="Exists('$(MSBuildProjectDirectory)\Resources\serialmonitor.service')" />
+    <Move SourceFiles="$(BaseOutputPath)deb\DEBIAN\postinst.service" DestinationFiles="$(BaseOutputPath)deb\DEBIAN\postinst" Condition="Exists('$(MSBuildProjectDirectory)\Resources\serialmonitor.service')" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\Resources\changelog.Debian" DestinationFolder="$(BaseOutputPath)deb\usr\share\doc\serialmonitor" />       
     <Copy SourceFiles="$(MSBuildProjectDirectory)\Resources\serialmonitor.service" DestinationFolder="$(BaseOutputPath)deb\lib\systemd\system" Condition="Exists('$(MSBuildProjectDirectory)\Resources\serialmonitor.service')" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\Resources\copyright" DestinationFolder="$(BaseOutputPath)deb\usr\share\doc\serialmonitor" />
@@ -71,9 +74,9 @@
     </Copy>
     <Copy SourceFiles="@(SourceFiles)" DestinationFolder="$(BaseOutputPath)deb\usr\share\serialmonitor\%(RecursiveDir)" />     
     <Delete Files="$(BaseOutputPath)deb\usr\share\serialmonitor\SerialMonitor.pdb" />
-    
     <WriteLinesToFile File="$(BaseOutputPath)deb\DEBIAN\control" Lines="Architecture: $(Arch)" />
-    <WriteLinesToFile File="$(BaseOutputPath)deb\DEBIAN\control" Lines="Depends: dotnet-runtime-8.0" Condition=" $(RuntimeIdentifier) == 'linux-x64' " />
+    <WriteLinesToFile File="$(BaseOutputPath)deb\DEBIAN\control" Lines="Depends: dotnet-runtime-8.0" Condition=" $(SelfContained) == 'false' " />    
+    <WriteLinesToFile File="$(BaseOutputPath)deb\DEBIAN\control" Lines="Depends: libc6, libgcc1, libgssapi-krb5-2, libstdc++6, zlib1g, libssl1.0.0 | libssl1.0.2 | libssl1.1 | libssl3, libicu | libicu72 | libicu71 | libicu70 | libicu69 | libicu68 | libicu67 | libicu66 | libicu65 | libicu63 | libicu60 | libicu57 | libicu55 | libicu52" Condition=" $(SelfContained) == 'true' " />
     <Exec Command="wsl du -ks bin/deb" ConsoleToMsBuild="true">
         <Output TaskParameter="ConsoleOutput" PropertyName="PackageSize" />
     </Exec>
@@ -94,6 +97,9 @@
 
     <Exec Command="wsl dpkg-deb --root-owner-group --build bin/deb bin/serialmonitor.$(Arch).deb" />
 
+    <ItemGroup>
+        <FilesToDelete Include="$(BaseOutputPath)deb\**\*.*" />
+    </ItemGroup>    
     <Delete Files="@(FilesToDelete)" />    
     
     <Message Text="Creating deb file finished" Importance="high" />
