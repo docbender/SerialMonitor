@@ -98,7 +98,7 @@ namespace SerialMonitor
             {
                 // every byte has 2 chars
                 hexData.MyProperty = new ushort[trimmed.Length / 2];
-                for (int i = 0; i < trimmed.Length; i++)
+                for (int i = 0; i < trimmed.Length/2; i++)
                 {
                     var singlenumber = trimmed.Substring(i, 2);
                     hexData.MyProperty[i] = GetSingleByte(singlenumber);

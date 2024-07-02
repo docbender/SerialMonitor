@@ -735,25 +735,20 @@ namespace SerialMonitor
                     if (reg.IsMatch(startLine))
                     {
                         ConsoleWriteLine("First line corresponds hex format. File will be read and packets compared as HEX.");
-
-                        HexData ask = HexData.Create(startLine);
-                        ++linesWithData;
+                        // remove empty lines
+                        lines = lines.Select(x => x.Trim()).Where(x => x.Length>0 && !x.StartsWith('#')).ToArray();
+                        HexData? ask = null;
                         //check whole file
-                        for (int i = 1; i < lines.Length; i++)
+                        for (int i = 0; i < lines.Length; i++)
                         {
-                            var line = lines[i].Trim();
-                            // empty or commented line
-                            if (line.Length == 0 || line.StartsWith('#'))
-                                continue;
+                            var line = lines[i];
 
                             if (reg.IsMatch(line))
                             {
-                                var data = HexData.Create(line);
-
                                 if (++linesWithData % 2 == 1)
-                                    ask = data;
+                                    ask = HexData.Create(line);
                                 else
-                                    repeaterHexMap.TryAdd(ask, data);
+                                    repeaterHexMap.TryAdd(ask!, HexData.Create(line));
                             }
                             else
                             {
@@ -771,14 +766,13 @@ namespace SerialMonitor
                         if (reg.IsMatch(startLine))
                         {
                             ConsoleWriteLine("First line corresponds hex format. File will be read and packets compared as HEX.");
-                            HexData ask = HexData.Create(startLine);
+                            // remove empty lines
+                            lines = lines.Select(x => x.Trim()).Where(x => x.Length > 0 && !x.StartsWith('#')).ToArray();
+                            HexData? ask = null;
                             //check whole file
                             for (int i = 0; i < lines.Length; i++)
                             {
-                                var line = lines[i].Trim();
-                                // empty or commented line
-                                if (line.Length == 0 || line.StartsWith('#'))
-                                    continue;
+                                var line = lines[i];
 
                                 if (line.Length % 2 == 1)
                                 {
@@ -791,7 +785,7 @@ namespace SerialMonitor
                                     if (++linesWithData % 2 == 1)
                                         ask = data;
                                     else
-                                        repeaterHexMap.TryAdd(ask, data);
+                                        repeaterHexMap.TryAdd(ask!, data);
                                 }
                                 else
                                 {
