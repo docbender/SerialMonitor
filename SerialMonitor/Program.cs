@@ -69,9 +69,10 @@ namespace SerialMonitor
 
             if (args.Length > 0)
             {
-                if (args[0].Equals("-?") || args[0].Equals("-help") || args[0].Equals("--help") || args[0].Equals("?") || args[0].Equals("/?"))
+                if (args[0].Equals("-?") || args[0].Equals("-help") || args[0].Equals("--help") || args[0].Equals("-h") || args[0].Equals("/?"))
                 {
-                    ConsoleWriteLineNoTrace($"SerialMonitor v.{version}");
+                    continuousMode = true;
+                    Console.WriteLine($"SerialMonitor v.{version}");
                     PrintHelp();
                     Console.WriteLine("\nPress [Enter] to exit");
                     Console.ReadLine();
@@ -95,7 +96,6 @@ namespace SerialMonitor
                     if (!string.IsNullOrEmpty(value))
                         setting.Port = value;
                 }
-
             }
 
             trace.Switch = new SourceSwitch("SourceSwitch", "All");
@@ -736,7 +736,7 @@ namespace SerialMonitor
                     {
                         ConsoleWriteLine("First line corresponds hex format. File will be read and packets compared as HEX.");
                         // remove empty lines
-                        lines = lines.Select(x => x.Trim()).Where(x => x.Length>0 && !x.StartsWith('#')).ToArray();
+                        lines = lines.Select(x => x.Trim()).Where(x => x.Length > 0 && !x.StartsWith('#')).ToArray();
                         HexData? ask = null;
                         //check whole file
                         for (int i = 0; i < lines.Length; i++)
@@ -868,15 +868,12 @@ namespace SerialMonitor
         {
             SerialPort port = ((SerialPort)sender);
             int byteCount;
-            int cycle = 0;
-
             try
             {
                 do
                 {
                     byteCount = port.BytesToRead;
                     Thread.Sleep(2);
-                    cycle++;
                 } while (byteCount < port.BytesToRead);
 
                 if (incoming.Length < byteCount)
@@ -906,29 +903,23 @@ namespace SerialMonitor
             // Write to output
             string line = "";
 
+            if (!applyGapTolerance)
+            {
+                if (setting.ShowTimeGap || setting.ShowTime)
+                    ConsoleWriteCommunication(ConsoleColor.Yellow, "\n");
+                if (setting.ShowTime)
+                    ConsoleWriteCommunication(ConsoleColor.Yellow, time.ToString());
+            }
+
+            if (setting.ShowTime || applyGapTolerance)
+                ConsoleWriteCommunication(ConsoleColor.Yellow, " ");
+
             if (setting.ShowAscii)
-            {
-                if (!setting.ShowTime || applyGapTolerance)
-                    line = ASCIIEncoding.ASCII.GetString(incoming, 0, byteCount);
-                else
-                    line = time.ToString() + " " + Encoding.ASCII.GetString(incoming, 0, byteCount);
-            }
+                line = ASCIIEncoding.ASCII.GetString(incoming, 0, byteCount);
             else
-            {
-                if (!setting.ShowTime || applyGapTolerance)
-                    line = string.Join(" ", incoming.Take(byteCount).Select(x => $"0x{x:X2}"));
-                else
-                    line = time.ToString() + " " + string.Join(" ", incoming.Take(byteCount).Select(x => $"0x{x:X2}"));
-            }
-
-            if (applyGapTolerance)
-                ConsoleWriteCommunication(ConsoleColor.Yellow, line);
-            else
-            {
-                ConsoleWriteCommunication(ConsoleColor.Yellow, "\n");
-                ConsoleWriteCommunication(ConsoleColor.Yellow, line);
-            }
-
+                line = string.Join(' ', incoming.Take(byteCount).Select(x => $"0x{x:X2}"));
+            
+            ConsoleWriteCommunication(ConsoleColor.Yellow, line);
 
             lastTimeReceved = time.Ticks;
 
