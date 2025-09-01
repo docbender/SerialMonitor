@@ -65,7 +65,7 @@ namespace SerialMonitor
 
         public static void Init()
         {
-            Application.Init();            
+            Application.Init();
             // main window
             var win = new Window()
             {
@@ -73,9 +73,7 @@ namespace SerialMonitor
                 Y = 0,
                 Width = Dim.Fill(),
                 Height = Dim.Fill() - 1,
-#pragma warning disable CS8602 // Dereference of a possibly null reference.
-                Title = $"SerialMonitor v.{System.Reflection.Assembly.GetEntryAssembly().GetName().Version.ToString(3)}"
-#pragma warning restore CS8602 // Dereference of a possibly null reference.
+                Title = $"SerialMonitor v.{System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3)}"
             };
 
             // hotkeys
@@ -471,7 +469,19 @@ namespace SerialMonitor
         {
             if (!PrintToLogView)
                 return;
-            lines.Add(message);
+            bool added = false;
+            if (logView.GetCurrentWidth(out var width) && width > 0)
+            {
+                if (message.Length > width)
+                {
+                    foreach (var chunk in message.Chunk(width).Select(x => new string(x)))
+                        lines.Add(chunk);
+                    added = true;
+                }
+            }
+            if (!added)
+                lines.Add(message);
+
             if (!logView.IsInitialized)
                 return;
 
@@ -484,9 +494,29 @@ namespace SerialMonitor
             if (!PrintToLogView)
                 return;
             if (lines.IsEmpty)
-                lines.Add(message);
+            {
+                WriteLine(message, color);
+                return;
+            }
+
+            if (logView.GetCurrentWidth(out var width))
+            {
+                if (lines.Last.Length + message.Length < width)
+                {
+                    lines.Last += message;
+                }
+                else
+                {
+                    var messages = lines.Last.Concat(message).Chunk(width).Select(x => new string(x)).ToList();
+                    lines.Last = messages.First();
+                    foreach (var chunk in messages.Skip(1))
+                        WriteLine(chunk, color);
+                }
+            }
             else
+            {
                 lines.Last += message;
+            }
         }
 
         internal static void Write(string message, ConsoleColor color = ConsoleColor.White)
