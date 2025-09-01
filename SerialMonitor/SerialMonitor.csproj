@@ -6,11 +6,12 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <Version>2.1.0.0</Version>
-    <FileVersion>2.1.0.24173</FileVersion>
+    <FileVersion>2.1.0.25244</FileVersion>
     <InformationalVersion>2.0.0.0.myversion</InformationalVersion>
     <AssemblyName>$(AssemblyName)</AssemblyName>
     <ErrorReport>none</ErrorReport>
-    <PublishTrimmed>True</PublishTrimmed>    
+    <PublishTrimmed>True</PublishTrimmed>
+    <AssemblyVersion>2.1.0.25244</AssemblyVersion>    
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
@@ -23,7 +24,7 @@
 
   <ItemGroup>
     <PackageReference Include="System.IO.Ports" Version="8.0.0" />
-    <PackageReference Include="Terminal.Gui" Version="1.17.0" />
+    <PackageReference Include="Terminal.Gui" Version="1.19.0" />
   </ItemGroup>
     
   <Choose>
