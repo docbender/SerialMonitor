@@ -346,21 +346,21 @@ namespace SerialMonitor
                 UI.ActionSettingLoad = () => { return setting; };
                 UI.ActionSettingSave = (setting) =>
                 {
-                    if (port.PortName != setting.Port || port.BaudRate != setting.BaudRate)
+                    if (port.PortName != setting.Port || port.BaudRate != setting.BaudRate || port.Parity != setting.Parity)
                     {
-                        if (port.IsOpen)
+                        bool wasopen = port.IsOpen;
+                        if (wasopen)
                         {
                             pauseConnection = true;
                             port.Close();
-                            port.PortName = setting.Port;
-                            port.BaudRate = setting.BaudRate;
+                        }
+                        port.PortName = setting.Port;
+                        port.BaudRate = setting.BaudRate;
+                        port.Parity = setting.Parity;
+                        if (wasopen)
+                        {
                             pauseConnection = false;
                             port.Open();
-                        }
-                        else
-                        {
-                            port.PortName = setting.Port;
-                            port.BaudRate = setting.BaudRate;
                         }
                         UI.SetPortStatus(port);
                     }
