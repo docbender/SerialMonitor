@@ -337,7 +337,14 @@ namespace SerialMonitor
                 UI.ActionHelp = () => { PrintHelp(); };
                 UI.ActionPrint = (print) => { pausePrint = !print; };
                 UI.ActionPrintAsHex = (hex) => { setting.ShowAscii = !hex; };
-                UI.ActionOpenClose = (close) => { pauseConnection = close; if (close) port.Close(); UI.SetPortStatus(port); UI.SetPinStatus(port); };
+                UI.ActionOpenClose = (close) =>
+                {
+                    pauseConnection = close;
+                    if (close)
+                        PortClose(port);
+                    UI.SetPortStatus(port);
+                    UI.SetPinStatus(port);
+                };
                 UI.ActionSend = (data) => { UserDataSend(port, data); };
                 UI.ActionSendFile = (file) => { UserDataSendFile(port, file); };
                 UI.ActionRts = () => { port.RtsEnable = !port.RtsEnable; UI.SetPortStatus(port); UI.SetPinStatus(port); };
@@ -352,7 +359,7 @@ namespace SerialMonitor
                         if (wasopen)
                         {
                             pauseConnection = true;
-                            port.Close();
+                            PortClose(port);
                         }
                         port.PortName = setting.Port;
                         port.BaudRate = setting.BaudRate;
@@ -360,7 +367,7 @@ namespace SerialMonitor
                         if (wasopen)
                         {
                             pauseConnection = false;
-                            port.Open();
+                            PortOpen(port);
                         }
                         UI.SetPortStatus(port);
                     }
@@ -376,7 +383,7 @@ namespace SerialMonitor
                         if (lastTry.AddSeconds(5) <= DateTime.Now)
                         {
                             lastTry = DateTime.Now;
-                            if (PortConnect(port))
+                            if (PortOpen(port))
                             {
                                 UI.SetPortStatus(port);
                                 UI.SetPinStatus(port);
@@ -563,7 +570,7 @@ namespace SerialMonitor
         {
             do
             {
-                if (!PortConnect(port))
+                if (!PortOpen(port))
                 {
                     string waitText = "Waiting 5s to reconnect...";
                     ConsoleWrite(waitText);
@@ -608,11 +615,12 @@ namespace SerialMonitor
         /// </summary>
         /// <param name="port"></param>
         /// <returns></returns>
-        private static bool PortConnect(SerialPort port)
+        private static bool PortOpen(SerialPort port)
         {
             try
             {
                 port.Open();
+                ConsoleWriteLine(TraceEventType.Information, $" Port {port.PortName} opened");
             }
             catch (IOException ex)
             {
@@ -640,6 +648,7 @@ namespace SerialMonitor
         {
             if (port.IsOpen)
                 port.Close();
+            ConsoleWriteLine(TraceEventType.Information, $" Port {port.PortName} closed");
         }
 
         /// <summary>
