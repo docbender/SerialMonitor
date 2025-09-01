@@ -37,6 +37,7 @@ namespace SerialMonitor
         static FileSystemWatcher? _watcher;
         static readonly TraceSource trace = new TraceSource("System");
         static readonly TraceSource traceData = new TraceSource("Data");
+        static readonly Regex hexRegex = new Regex("^([0-9A-Fa-f]{1,2}\\s*)+$", RegexOptions.Compiled);
         /// <summary>
         /// Flag for stop printing communication data. Log into file will continue.
         /// </summary>
@@ -428,6 +429,12 @@ namespace SerialMonitor
                 return false;
             }
 
+            if (!port.IsOpen)
+            {
+                ConsoleWriteError("Port is closed.");
+                return false;
+            }
+
             bool hex = false;
             byte[] data;
 
@@ -436,10 +443,9 @@ namespace SerialMonitor
 
             if (hex)
             {
-                string prepared = line.Replace("0x", "", StringComparison.OrdinalIgnoreCase);
-                Regex reg = new Regex("^([0-9A-Fa-f]{1,2}\\s*)+$");
+                string prepared = line.Replace("0x", "", StringComparison.OrdinalIgnoreCase);                
 
-                if (!reg.IsMatch(prepared))
+                if (!hexRegex.IsMatch(prepared))
                 {
                     ConsoleWriteError("Message is not well formated. Data will be not sent.");
                     return false;
