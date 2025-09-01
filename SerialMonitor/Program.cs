@@ -138,14 +138,20 @@ namespace SerialMonitor
             arg = arguments.GetArgument("parity");
             if (arg.Enabled)
             {
-                if (arg.Parameter.ToLower().Equals("odd"))
+                if (arg.Parameter.Equals("odd", StringComparison.OrdinalIgnoreCase))
                     setting.Parity = Parity.Odd;
-                else if (arg.Parameter.ToLower().Equals("even"))
+                else if (arg.Parameter.Equals("even", StringComparison.OrdinalIgnoreCase))
                     setting.Parity = Parity.Even;
-                else if (arg.Parameter.ToLower().Equals("mark"))
+                else if (arg.Parameter.Equals("mark", StringComparison.OrdinalIgnoreCase))
                     setting.Parity = Parity.Mark;
-                else if (arg.Parameter.ToLower().Equals("space"))
+                else if (arg.Parameter.Equals("space", StringComparison.OrdinalIgnoreCase))
                     setting.Parity = Parity.Space;
+            }
+            else
+            {
+                string? value = Config.LoadSetting(Config.SETTING_PARITY);
+                if (!string.IsNullOrEmpty(value))
+                    Enum.TryParse<Parity>(value, true, out setting.Parity);
             }
 
             arg = arguments.GetArgument("databits");
@@ -359,7 +365,7 @@ namespace SerialMonitor
                         UI.SetPortStatus(port);
                     }
 
-                    return Config.SaveSetting(setting.Port, setting.BaudRate, setting.ShowTime, setting.ShowTimeGap, setting.ShowSentData, setting.ShowAscii);
+                    return Config.SaveSetting(setting.Port, setting.BaudRate, setting.Parity, setting.ShowTime, setting.ShowTimeGap, setting.ShowSentData, setting.ShowAscii);
                 };
 
                 UI.SetPortStatus(port);
@@ -443,7 +449,7 @@ namespace SerialMonitor
 
             if (hex)
             {
-                string prepared = line.Replace("0x", "", StringComparison.OrdinalIgnoreCase);                
+                string prepared = line.Replace("0x", "", StringComparison.OrdinalIgnoreCase);
 
                 if (!hexRegex.IsMatch(prepared))
                 {
@@ -581,7 +587,7 @@ namespace SerialMonitor
                 }
                 else
                 {
-                    ConsoleWriteLine($" Port {port.PortName} opened");
+                    ConsoleWriteLine(TraceEventType.Information, $" Port {port.PortName} opened");
                 }
 
                 // TODO: 
@@ -924,7 +930,7 @@ namespace SerialMonitor
                 line = ASCIIEncoding.ASCII.GetString(incoming, 0, byteCount);
             else
                 line = string.Join(' ', incoming.Take(byteCount).Select(x => $"0x{x:X2}"));
-            
+
             ConsoleWriteCommunication(ConsoleColor.Yellow, line);
 
             lastTimeReceved = time.Ticks;
@@ -1228,7 +1234,7 @@ namespace SerialMonitor
         {
             port.Close();
 
-            Config.SaveSetting(setting.Port, setting.BaudRate, setting.ShowTime, setting.ShowTimeGap, setting.ShowSentData, setting.ShowAscii);
+            Config.SaveSetting(setting.Port, setting.BaudRate, setting.Parity, setting.ShowTime, setting.ShowTimeGap, setting.ShowSentData, setting.ShowAscii);
             Config.SaveHistory(UI.CommandHistory);
             Config.SaveFileList(UI.FileHistory);
 

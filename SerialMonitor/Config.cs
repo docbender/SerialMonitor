@@ -24,6 +24,7 @@ namespace SerialMonitor
         const string FILE_LIST_REGEX = "(" + FILE_LIST + "=)([^\n]*)";
         public const string SETTING_PORT = "Port";
         public const string SETTING_BAUDRATE = "BaudRate";
+        public const string SETTING_PARITY = "Parity";        
         public const string SETTING_SHOWTIME = "ShowTime";
         public const string SETTING_SHOWTIMEGAP = "ShowTimeGap";
         public const string SETTING_SHOWSENTDATA = "ShowSentData";
@@ -77,11 +78,12 @@ namespace SerialMonitor
         /// <param name="showSentData"></param>
         /// <param name="showAscii"></param>
         /// <returns></returns>
-        internal static bool SaveSetting(string device, int baudrate, bool showTime, bool showTimeGap, bool showSentData, bool showAscii)
+        internal static bool SaveSetting(string device, int baudrate, System.IO.Ports.Parity parity, bool showTime, bool showTimeGap, bool showSentData, bool showAscii)
         {
             string? cfg = ReadConfiguration();
             cfg = PrepareSave(cfg, SETTING_PORT, device);
             cfg = PrepareSave(cfg, SETTING_BAUDRATE, baudrate.ToString());
+            cfg = PrepareSave(cfg, SETTING_PARITY, parity.ToString());
             cfg = PrepareSave(cfg, SETTING_SHOWTIME, showTime ? "1" : "0");
             cfg = PrepareSave(cfg, SETTING_SHOWTIMEGAP, showTimeGap ? "1" : "0");
             cfg = PrepareSave(cfg, SETTING_SHOWSENTDATA, showSentData ? "1" : "0");

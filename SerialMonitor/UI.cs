@@ -21,7 +21,7 @@ namespace SerialMonitor
         static readonly Label pinsLabel = new Label() { Text = "Pins: ", X = 1, Y = 1 };
         static readonly Label portName = new Label() { Text = "???", X = 8, Y = 0 };
         static readonly Label portStatus = new Label() { Text = "Closed", X = Pos.Right(portName) + 2, Y = 0 };
-        static readonly Label portSpeed = new Label() { Text = $"Speed: 0b/s", X = Pos.Right(portStatus) + 2, Y = 0 };
+        static readonly Label portParameters = new Label() { Text = $"0000000b/s", X = Pos.Right(portStatus) + 2, Y = 0 };       
         static readonly Label pinRTS = new Label() { Text = "RTS(?)", X = 8, Y = 1 };
         static readonly Label pinCTS = new Label() { Text = "CTS(?)", X = Pos.Right(pinRTS) + 2, Y = 1 };
         static readonly Label pinDTR = new Label() { Text = "DTR(?)", X = Pos.Right(pinCTS) + 2, Y = 1 };
@@ -90,10 +90,10 @@ namespace SerialMonitor
                 X = 0,
                 Y = 0,
                 Width = Dim.Fill(),
-                Height = 4
+                Height = 4,
             };
 
-            frameStatus.Add(portLabel, pinsLabel, portName, portStatus, portSpeed,
+            frameStatus.Add(portLabel, pinsLabel, portName, portStatus, portParameters,
                 pinRTS, pinCTS, pinDTR, pinDSR, pinCD, pinBreak, timeLabel, debugLabel);
 
             timeLabel.X = Pos.Right(frameStatus) - 10;
@@ -218,13 +218,15 @@ namespace SerialMonitor
                 var dialog = new Dialog("Setting", 50, 11, ok, cancel);
                 var lbPort = new Label("Port:") { X = 1, Y = 1 };
                 var lbSpeed = new Label("Baud rate:") { X = 1, Y = 2 };
+                var lbParity = new Label("Parity:") { X = 1, Y = 3 };
                 var tbPort = new TextField() { X = 15, Y = 1, Width = 15, Text = "" };
                 var tbSpeed = new TextField() { X = 15, Y = 2, Width = 10, Text = "" };
-                var cbTime = new CheckBox("Show transaction time") { X = 1, Y = 4 };
-                var cbTimeGap = new CheckBox("Show time between 2 transactions") { X = 1, Y = 5 };
-                var cbSent = new CheckBox("Show sent data") { X = 1, Y = 6 };
+                var tbParity = new TextField() { X = 15, Y = 3, Width = 10, Text = "" };
+                var cbTime = new CheckBox("Show transaction time") { X = 1, Y = 5 };
+                var cbTimeGap = new CheckBox("Show time between 2 transactions") { X = 1, Y = 6 };
+                var cbSent = new CheckBox("Show sent data") { X = 1, Y = 7 };
 
-                dialog.Add(lbPort, lbSpeed, tbPort, tbSpeed, cbTime, cbTimeGap, cbSent);
+                dialog.Add(lbPort, lbSpeed, lbParity, tbPort, tbSpeed, tbParity, cbTime, cbTimeGap, cbSent);
                 dialog.ColorScheme = Colors.Dialog;
 
                 if (ActionSettingLoad == null)
@@ -234,6 +236,7 @@ namespace SerialMonitor
 
                 tbPort.Text = setting.Port;
                 tbSpeed.Text = setting.BaudRate.ToString();
+                tbParity.Text = setting.Parity.ToString();
                 cbTime.Checked = setting.ShowTime;
                 cbTimeGap.Checked = setting.ShowTimeGap;
                 cbSent.Checked = setting.ShowSentData;
@@ -241,11 +244,13 @@ namespace SerialMonitor
                 ok.Clicked += () =>
                 {
                     var port = tbPort.Text.ToString();
-                    if (string.IsNullOrEmpty(port) || !int.TryParse(tbSpeed.Text.ToString(), out int baudrate))
+                    if (string.IsNullOrEmpty(port) || !int.TryParse(tbSpeed.Text.ToString(), out int baudrate)
+                        || !Enum.TryParse<Parity>(tbParity.Text.ToString(), true, out Parity parity))
                         return;
 
                     setting.Port = port;
                     setting.BaudRate = baudrate;
+                    setting.Parity = parity;
                     setting.ShowTime = cbTime.Checked;
                     setting.ShowTimeGap = cbTimeGap.Checked;
                     setting.ShowSentData = cbSent.Checked;
@@ -449,7 +454,7 @@ namespace SerialMonitor
         {
             portName.Text = port.PortName;
             portStatus.Text = port.IsOpen ? "Opened" : "Closed";
-            portSpeed.Text = $"{port.BaudRate}b/s";
+            portParameters.Text = $"{port.BaudRate}b/s  Parity: {port.Parity}";
         }
 
         internal static void SetPinStatus(SerialPort port)
