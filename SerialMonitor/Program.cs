@@ -911,7 +911,7 @@ namespace SerialMonitor
                     ConsoleWriteCommunication(ConsoleColor.Yellow, time.ToString());
             }
 
-            if (setting.ShowTime || applyGapTolerance)
+            if (setting.ShowTime || applyGapTolerance || !gapToleranceEnable)
                 ConsoleWriteCommunication(ConsoleColor.Yellow, " ");
 
             if (setting.ShowAscii)
