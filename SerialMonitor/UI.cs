@@ -480,7 +480,12 @@ namespace SerialMonitor
                 }
             }
             if (!added)
-                lines.Add(message);
+            {
+                if (message.Length == 0)
+                    lines.Add(" ");
+                else
+                    lines.Add(message);
+            }
 
             if (!logView.IsInitialized)
                 return;
