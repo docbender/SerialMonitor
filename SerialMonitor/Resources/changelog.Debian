@@ -1,6 +1,11 @@
-serialmonitor (2.1.0-1) stretch; urgency=medium
+serialmonitor (2.1.0) stretch; urgency=medium
 
-  * Possibility to use variables in repeat file
-  * Fix loading repeat file
+  * .NET 8.0
+  * Repeat file improvement
+  * Functions in the repeat file
+  * Variables in the repeat file
+  * User inteface improvement
+  * Parity setup from GUI
+  * Linux service support
 
- -- VitaTucek <vita@whatever.com>  Mon, 27 May 2024 12:00:00 +0200
+ -- VitaTucek <vita@whatever.com>  Mon, 2 Sep 2024 12:00:00 +0200
