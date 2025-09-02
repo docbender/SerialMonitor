@@ -972,8 +972,6 @@ namespace SerialMonitor
         {
             if (repeaterUseHex)
             {
-                //HexData ask = string.Join("", incoming.Take(byteCount).Select(x => x.ToString("X2")));
-
                 if (repeaterHexMap.TryGetValue(incoming, byteCount, out var answer))
                 {
                     var data = answer;
