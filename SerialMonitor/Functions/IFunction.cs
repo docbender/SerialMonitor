@@ -13,16 +13,25 @@ namespace SerialMonitor.Functions
     public interface IFunction
     {
         /// <summary>
-        /// Data space needed in packet
+        /// Data space needed in the packet
         /// </summary>
         int Size { get; }
         /// <summary>
-        /// Compute function over data in source from 0 to position. Result is put at position.
+        /// Function position in the packet
+        /// </summary>
+        int Position { get; }
+        /// <summary>
+        /// Start byte of the computing in the packet. Could be also lower range of the function.
+        /// </summary>
+        int Start { get; }
+        /// <summary>
+        /// End byte of the computing in the packet. Could be also higher range of the function.
+        /// </summary>
+        int End { get; }
+        /// <summary>
+        /// Compute function over data in source from Start to End or Position. Result is put at Position.
         /// </summary>
         /// <param name="data"></param>
-        /// <param name="position"></param>
-        void Compute(byte[] data, int position);
-
-        static IFunction Instance { get; }
+        void Compute(byte[] data);
     }
 }
