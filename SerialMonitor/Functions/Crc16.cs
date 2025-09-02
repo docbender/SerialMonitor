@@ -10,7 +10,7 @@
 
 namespace SerialMonitor.Functions
 {
-    public class Crc16 : IFunction
+    public class Crc16 : FunctionBase
     {
         private static readonly ushort[] crc_table = {
             0x0000, 0xC0C1, 0xC181, 0x0140, 0xC301, 0x03C0, 0x0280, 0xC241,
@@ -47,10 +47,15 @@ namespace SerialMonitor.Functions
             0x8201, 0x42C0, 0x4380, 0x8341, 0x4100, 0x81C1, 0x8081, 0x4040
         };
 
-        public int Size => 2;
+        public Crc16(int position) : base(position)
+        {
+        }
 
-        private static IFunction? _instance;
-        public static IFunction Instance => _instance ?? (_instance = new Crc16());
+        public Crc16(int position, int start, int end) : base(position, start, end)
+        {
+        }
+
+        public override int Size => 2;
 
         /// <summary>
         /// Compute over specified length
@@ -58,13 +63,13 @@ namespace SerialMonitor.Functions
         /// <param name="data"></param>
         /// <param name="length"></param>
         /// <returns></returns>
-        public static ushort ComputeCrc(byte[] data, int length)
+        public static ushort ComputeCrc(byte[] data, int position, int start, int end)
         {
-            int datalen = length > data.Length ? data.Length : length;
+            int dataend = end < position ? end : position - 1;
             ushort temp;
             ushort crc = 0xFFFF;
 
-            for (int i = 0; i < datalen; i++)
+            for (int i = start; i <= dataend; i++)
             {
                 temp = (ushort)((data[i] ^ crc) & 0x00FF);
                 crc >>= 8;
@@ -74,11 +79,11 @@ namespace SerialMonitor.Functions
             return crc;
         }
 
-        public void Compute(byte[] data, int position)
+        public override void Compute(byte[] data)
         {
-            var crc = Crc16.ComputeCrc(data, position);
-            data[position] = (byte)(crc & 0xFF);
-            data[position+1] = (byte)(crc >> 8 & 0xFF);            
+            var crc = Crc16.ComputeCrc(data, Position, Start, End);
+            data[Position] = (byte)(crc & 0xFF);
+            data[Position + 1] = (byte)(crc >> 8 & 0xFF);
         }
 
         /// <summary>
@@ -102,7 +107,7 @@ namespace SerialMonitor.Functions
         {
             if (length < 3)
                 return false;
-            ushort computed = ComputeCrc(data, length - 2);
+            ushort computed = ComputeCrc(data, length - 2, 0, length - 2);
             ushort received = (ushort)((ushort)(data[length - 1] << 8) + data[length - 2]);
 
             return computed == received;

@@ -8,25 +8,46 @@
 //
 //---------------------------------------------------------------------------
 
+using System.Text.RegularExpressions;
+
 namespace SerialMonitor.Functions
 {
     internal class BuiltInFunctions
     {
-        public static readonly string[] Available = [nameof(Crc16)];
+        public static readonly string[] Available = [nameof(Crc16), nameof(Sum), nameof(Rand)];
+        private static readonly Regex functionRegex = new Regex(@"^(\w+)(\[(\d*)\.{2}(\d*)\])?$", RegexOptions.Compiled);
 
         public static bool IsAvailable(string functionName)
         {
-            return Available.Any(a => a.Equals(functionName, StringComparison.OrdinalIgnoreCase));
+            int i = functionName.IndexOf('[');
+            if (i >= 0)
+                return Available.Any(a => a.Equals(functionName[..i], StringComparison.OrdinalIgnoreCase));
+            else
+                return Available.Any(a => a.Equals(functionName, StringComparison.OrdinalIgnoreCase));
         }
 
-        public static IFunction Get(string functionName)
+        public static IFunction Get(string functionName, int position)
         {
-            var f = Available.First(x => x.Equals(functionName, StringComparison.OrdinalIgnoreCase));
+            var match = functionRegex.Match(functionName);
+            if (!match.Success)
+                throw new ArgumentException($"Invalid function definition '{functionName}'.");
+
+            var f = Available.First(x => x.Equals(match.Groups[1].Value, StringComparison.OrdinalIgnoreCase));
+            // group 1 = name
+            // group 2 = range
+            // group 3 = start
+            // group 4 = end
+            int start = match.Groups[2].Success && match.Groups[3].Success && match.Groups[3].Value.Length > 0 ? int.Parse(match.Groups[3].Value) : 0;
+            int end = match.Groups[2].Success && match.Groups[4].Success && match.Groups[4].Value.Length > 0 ? int.Parse(match.Groups[4].Value) : int.MaxValue;
 
             if (f.Equals("Crc16"))
-                return Crc16.Instance;
+                return new Crc16(position, start, end);
+            else if (f.Equals("Sum"))
+                return new Sum(position, start, end);
+            else if (f.Equals("Rand"))
+                return new Rand(position, start, end);
 
-            throw new NotImplementedException("Function {functionName} is not implemented.");
+            throw new NotImplementedException($"Function {functionName} is not implemented.");
         }
     }
 }

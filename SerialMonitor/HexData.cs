@@ -9,16 +9,17 @@
 //---------------------------------------------------------------------------
 
 using SerialMonitor.Functions;
-using System.Collections;
 using System.Globalization;
-using System.Linq.Expressions;
 using System.Text.RegularExpressions;
 
 namespace SerialMonitor
 {
-    internal class HexData
+    public class HexData
     {
-        private static readonly Regex regWhite = new Regex("\\s+");
+        /// <summary>
+        /// White characters pattern
+        /// </summary>
+        private static readonly Regex regexWhite = new Regex("\\s+", RegexOptions.Compiled);
         /// <summary>
         /// Properties
         /// </summary>
@@ -50,9 +51,9 @@ namespace SerialMonitor
             var trimmed = data.Trim().Replace("0x", "", StringComparison.OrdinalIgnoreCase);
 
             // delimited
-            if (regWhite.IsMatch(trimmed))
+            if (regexWhite.IsMatch(trimmed))
             {
-                var bytes = regWhite.Split(trimmed);
+                var bytes = regexWhite.Split(trimmed);
 
                 var functions = bytes.Select((x, i) => new { Index = i, Item = x })
                     .Where(x => x.Item.StartsWith('@')).Select(x => new { x.Index, Item = x.Item[1..] });
@@ -69,18 +70,16 @@ namespace SerialMonitor
                             throw new RepeatFileException($"Function {f.Item} is not supported");
                     }
                     // create functions
-                    hexData.Functions = functions.ToDictionary(x => x.Index, x => BuiltInFunctions.Get(x.Item));
+                    hexData.Functions = functions.ToDictionary(x => x.Index, x => BuiltInFunctions.Get(x.Item, x.Index));
                     // alocate properties (depend on function space needed)
                     hexData.MyProperty = new ushort[bytes.Length - hexData.Functions.Count + hexData.Functions.Sum(x => x.Value.Size)];
                     // fill properties
-                    int move = 1;
                     for (int i = 0; i < bytes.Length; i++)
                     {
                         // function exists
                         if (!hexData.Functions.TryGetValue(i, out var func))
                         {
                             hexData.MyProperty[i] = GetSingleByte(bytes[i]);
-                            move = 1;
                         }
                         else
                         {
@@ -174,7 +173,7 @@ namespace SerialMonitor
         /// <summary>
         /// Return byte representation.
         /// Numeric value is as is.
-        /// Variable symbol $xx is converted into 0x01xx
+        /// Variable symbol $xx is converted into 0x10xx
         /// </summary>
         /// <param name="singlenumber"></param>
         /// <returns></returns>
@@ -189,7 +188,7 @@ namespace SerialMonitor
     /// <summary>
     /// HexData collection
     /// </summary>
-    internal class HexDataCollection
+    public class HexDataCollection
     {
         private readonly Dictionary<HexData, Tuple<HexData, HexData>> _data = new Dictionary<HexData, Tuple<HexData, HexData>>(
             new HexDataEqualityComparer());
@@ -277,7 +276,7 @@ namespace SerialMonitor
                     }
                     else if (hexvalue.Functions != null && HexData.IsFunction(hexvalue.MyProperty[i]))
                     {
-                        hexvalue.Functions[i].Compute(value, i);
+                        hexvalue.Functions[i].Compute(value);
                     }
                     else if (HexData.IsFunctionArea(hexvalue.MyProperty[i]))
                     {
