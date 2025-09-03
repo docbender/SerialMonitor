@@ -6,12 +6,12 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <Version>2.1.0.0</Version>
-    <FileVersion>2.1.0.25245</FileVersion>
+    <FileVersion>2.1.0.25246</FileVersion>
     <InformationalVersion>2.0.0.0.myversion</InformationalVersion>
     <AssemblyName>$(AssemblyName)</AssemblyName>
     <ErrorReport>none</ErrorReport>
     <PublishTrimmed>True</PublishTrimmed>
-    <AssemblyVersion>2.1.0.25245</AssemblyVersion>    
+    <AssemblyVersion>2.1.0.25246</AssemblyVersion>    
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
@@ -42,7 +42,12 @@
          <PropertyGroup>
              <Arch>amd64</Arch>                
          </PropertyGroup>
-     </When>        
+     </When>
+     <When Condition=" $(RuntimeIdentifier) == 'win-x64' ">
+         <PropertyGroup>
+             <Arch>amd64</Arch>                
+         </PropertyGroup>
+     </When>  
   </Choose>
     
   <Target Name="CustomActionsPublish" AfterTargets="Publish" Condition=" $(RuntimeIdentifier) == 'linux-arm' Or $(RuntimeIdentifier) == 'linux-arm64' Or $(RuntimeIdentifier) == 'linux-x64' ">
@@ -96,7 +101,7 @@
     <Exec Command="wsl find bin/deb/usr/share/doc/serialmonitor -type f -exec chmod 644 {} \;" />    
     <Exec Command="wsl chmod 755 bin/deb/usr/share/serialmonitor/SerialMonitor" />
 
-    <Exec Command="wsl dpkg-deb --root-owner-group --build bin/deb bin/serialmonitor.$(Arch).deb" />
+    <Exec Command="wsl dpkg-deb --root-owner-group --build bin/deb bin/serialmonitor.$(AssemblyVersion).$(Arch).deb" />
 
     <ItemGroup>
         <FilesToDelete Include="$(BaseOutputPath)deb\**\*.*" />
@@ -105,4 +110,16 @@
     
     <Message Text="Creating deb file finished" Importance="high" />
   </Target>  
+  
+  <Target Name="CustomActionsPublishWin" AfterTargets="Publish" Condition=" $(RuntimeIdentifier) == 'win-x64' ">
+    <Message Text="Creating archive..." Importance="high" />  
+    <ItemGroup>
+        <SourceFiles Include="$(OutputPath)**\*.*" />
+        <ConfigFiles Include="$(MSBuildProjectDirectory)\Resources\config\**\*.*" />
+    </ItemGroup>
+    
+    <Exec Command="C:\Progra~1\7-Zip\7z.exe a -xr!*.pdb bin/serialmonitor.$(AssemblyVersion).$(Arch).7z .\$(OutputPath)*" />
+    
+    <Message Text="Creating archive finished" Importance="high" />
+    </Target> 
 </Project>
