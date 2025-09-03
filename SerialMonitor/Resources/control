@@ -1,0 +1,10 @@
+Package: serialmonitor
+Version: 2.1.0
+Section: utils
+Priority: standard
+Homepage: https://github.com/docbender/SerialMonitor
+Maintainer: Vita Tucek <vita@whatever.com>
+Description: Utility for communication over serial port 
+   This utility could be use for monitor communication
+   at the serial port. It allow send user data, files and also
+   act as serial device emulator.

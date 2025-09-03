@@ -18,18 +18,26 @@ namespace SerialMonitor
     class Program
     {
         static readonly ArgumentCollection arguments = new ArgumentCollection(new string[] { "baudrate", "parity", "databits", "stopbits",
-         "repeatfile", "logfile", "logincomingonly", "showascii", "notime", "gaptolerance", "continuousmode", "nogui" });
+         "repeatfile", "logfile", "logincomingonly", "showascii", "notime", "gaptolerance", "continuousmode", "nogui", "service" });
         static readonly string? version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3);
         static long lastTimeReceved = 0;
         static bool repeaterEnabled = false;
         static bool repeaterUseHex = false;
-        static readonly Dictionary<string, string> repeaterMap = new Dictionary<string, string>();
+        static readonly Dictionary<string, string> repeaterStringMap = new Dictionary<string, string>();
+        static readonly HexDataCollection repeaterHexMap = new HexDataCollection();
         static bool logfile = false;
         static bool logincomingonly = false;
-        static string logFilename = "";
+        // default log file name
+        static readonly string logSystemFilename = logDataFilename = Path.Combine(OperatingSystem.IsLinux() ? "/var/log/serialmonitor" : Directory.GetCurrentDirectory(), "serialmonitor.log");
+        static string logDataFilename = $"log_{DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss")}.txt";
         static int gapTolerance = 0;
         static bool gapToleranceEnable = false;
         static bool continuousMode = false;
+        static bool serviceMode = false;
+        static FileSystemWatcher? _watcher;
+        static readonly TraceSource trace = new TraceSource("System");
+        static readonly TraceSource traceData = new TraceSource("Data");
+        static readonly Regex hexRegex = new Regex("^([0-9A-Fa-f]{1,2}\\s*)+$", RegexOptions.Compiled);
         /// <summary>
         /// Flag for stop printing communication data. Log into file will continue.
         /// </summary>
@@ -58,13 +66,14 @@ namespace SerialMonitor
         static void Main(string[] args)
         {
             DateTime lastTry = DateTime.MinValue;
-            setting.Port = System.OperatingSystem.IsWindows() ? "COM1" : "/dev/ttyS1";
+            setting.Port = OperatingSystem.IsWindows() ? "COM1" : "/dev/ttyS1";
 
             if (args.Length > 0)
             {
-                if (args[0].Equals("-?") || args[0].Equals("-help") || args[0].Equals("--help") || args[0].Equals("?") || args[0].Equals("/?"))
+                if (args[0].Equals("-?") || args[0].Equals("-help") || args[0].Equals("--help") || args[0].Equals("-h") || args[0].Equals("/?"))
                 {
-                    ConsoleWriteLineNoTrace($"SerialMonitor v.{version}");
+                    continuousMode = true;
+                    Console.WriteLine($"SerialMonitor v.{version}");
                     PrintHelp();
                     Console.WriteLine("\nPress [Enter] to exit");
                     Console.ReadLine();
@@ -88,18 +97,27 @@ namespace SerialMonitor
                     if (!string.IsNullOrEmpty(value))
                         setting.Port = value;
                 }
-
             }
+
+            trace.Switch = new SourceSwitch("SourceSwitch", "All");
+            trace.Switch.Level = SourceLevels.All;
+            trace.Listeners.Clear();
+            trace.Listeners.Add(new System.Diagnostics.TextWriterTraceListener(logSystemFilename, "System"));
+
             // parse commandline arguments
             arguments.Parse(args);
 
-            continuousMode = arguments.GetArgument("continuousmode").Enabled || arguments.GetArgument("nogui").Enabled;
+            continuousMode = arguments.GetArgument("continuousmode").Enabled
+                || arguments.GetArgument("nogui").Enabled
+                || arguments.GetArgument("service").Enabled;
+
+            serviceMode = arguments.GetArgument("service").Enabled;
 
             if (!continuousMode)
                 UI.Init();
-            else
+            else if (!serviceMode)
                 ConsoleWriteLineNoTrace($"SerialMonitor v.{version}");
-                        
+
             setting.BaudRate = 9600;
             setting.Parity = Parity.None;
             setting.DataBits = 8;
@@ -120,14 +138,20 @@ namespace SerialMonitor
             arg = arguments.GetArgument("parity");
             if (arg.Enabled)
             {
-                if (arg.Parameter.ToLower().Equals("odd"))
+                if (arg.Parameter.Equals("odd", StringComparison.OrdinalIgnoreCase))
                     setting.Parity = Parity.Odd;
-                else if (arg.Parameter.ToLower().Equals("even"))
+                else if (arg.Parameter.Equals("even", StringComparison.OrdinalIgnoreCase))
                     setting.Parity = Parity.Even;
-                else if (arg.Parameter.ToLower().Equals("mark"))
+                else if (arg.Parameter.Equals("mark", StringComparison.OrdinalIgnoreCase))
                     setting.Parity = Parity.Mark;
-                else if (arg.Parameter.ToLower().Equals("space"))
+                else if (arg.Parameter.Equals("space", StringComparison.OrdinalIgnoreCase))
                     setting.Parity = Parity.Space;
+            }
+            else
+            {
+                string? value = Config.LoadSetting(Config.SETTING_PARITY);
+                if (!string.IsNullOrEmpty(value))
+                    Enum.TryParse<Parity>(value, true, out setting.Parity);
             }
 
             arg = arguments.GetArgument("databits");
@@ -149,7 +173,7 @@ namespace SerialMonitor
 
             port.PortName = setting.Port;
             port.BaudRate = setting.BaudRate;
-            port.Parity   = setting.Parity;
+            port.Parity = setting.Parity;
             port.DataBits = setting.DataBits;
             port.StopBits = setting.StopBits;
             port.DataReceived += new SerialDataReceivedEventHandler(port_DataReceived);
@@ -177,11 +201,11 @@ namespace SerialMonitor
             {
                 if (arg.Parameter.Length == 0)
                 {
-                    logFilename = "log_" + DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss") + ".txt";
-                    ConsoleWriteLine("Warning: Log file name not specified. Used " + logFilename);
+                    if (!serviceMode)
+                        ConsoleWriteLine(TraceEventType.Warning, "Warning: Log file name not specified. Used " + logDataFilename);
                 }
                 else
-                    logFilename = arg.Parameter;
+                    logDataFilename = arg.Parameter;
 
                 logfile = true;
             }
@@ -191,9 +215,8 @@ namespace SerialMonitor
                 if (!logfile)
                 {
                     logfile = true;
-                    logFilename = "log_" + DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss") + ".txt";
-                    ConsoleWriteLine("Warning: Parameter logfile not specified. Log enabled to the file: " + logFilename);
-                    logfile = true;
+                    if (!serviceMode)
+                        ConsoleWriteLine(TraceEventType.Warning, "Warning: Parameter logfile not specified. Log enabled to the file: " + logDataFilename);
                 }
                 logincomingonly = true;
             }
@@ -205,44 +228,49 @@ namespace SerialMonitor
                 _ = int.TryParse(arg.Parameter, out gapTolerance);
 
                 if (gapTolerance == 0)
-                    ConsoleWriteLine("Warning: Parameter gaptolerance has invalid argument. Gap tolerance must be greater than zero.");
+                    ConsoleWriteLine(TraceEventType.Warning, "Warning: Parameter gaptolerance has invalid argument. Gap tolerance must be greater than zero.");
                 else
                     gapToleranceEnable = true;
             }
 
-
             if (logfile)
             {
                 //check path
-                string? path = System.IO.Path.GetDirectoryName(logFilename);
+                string? path = Path.GetDirectoryName(logDataFilename);
                 if (path?.Length > 0)
                 {
-                    if (!System.IO.Directory.Exists(path))
+                    if (!Directory.Exists(path))
                         try
                         {
-                            System.IO.Directory.CreateDirectory(path);
+                            Directory.CreateDirectory(path);
                         }
                         catch (Exception ex)
                         {
-                            ConsoleWriteLine($"Warning: Cannot create directory {path}. {ex.Message}");
+                            ConsoleWriteLine(TraceEventType.Warning, $"Warning: Cannot create directory {path}. {ex.Message}");
                         }
                 }
                 else
                 {
-                    logFilename = System.IO.Directory.GetCurrentDirectory() + "\\" + logFilename;
-                }                
+                    if (OperatingSystem.IsLinux())
+                        logDataFilename = Path.Combine("/var/log/serialmonitor", logDataFilename);
+                    else
+                        logDataFilename = Path.Combine(Directory.GetCurrentDirectory(), logDataFilename);
+                }
 
-                if (!IsFileNameValid(logFilename))
+                if (!IsFileNameValid(logDataFilename))
                 {
-                    ConsoleWriteLine("\nPress [Enter] to exit");
-                    Console.ReadLine();
-
+                    if (!serviceMode)
+                    {
+                        ConsoleWriteLine("\nPress [Enter] to exit");
+                        Console.ReadLine();
+                    }
                     return;
                 }
 
                 //assign file to listener
-                if (Trace.Listeners["Default"] is DefaultTraceListener listener)
-                    listener.LogFileName = logFilename;
+                traceData.Switch = new SourceSwitch("SourceSwitch", "All");
+                traceData.Listeners.Clear();
+                traceData.Listeners.Add(new System.Diagnostics.TextWriterTraceListener(logDataFilename, "Data"));
             }
 
             /*
@@ -260,15 +288,17 @@ namespace SerialMonitor
             {
                 if (!IsFileNameValid(repeatfile.Parameter))
                 {
-                    ConsoleWriteLine("\nPress [Enter] to exit");
-                    Console.ReadLine();
-
+                    if (!serviceMode)
+                    {
+                        ConsoleWriteLine("\nPress [Enter] to exit");
+                        Console.ReadLine();
+                    }
                     return;
                 }
                 PrepareRepeatFile(repeatfile.Parameter);
             }
-            
-            ConsoleWriteLine($"Opening port {port.PortName}: baudrate={port.BaudRate}b/s, parity={port.Parity}, databits={port.DataBits}, stopbits={port.StopBits}");
+
+            ConsoleWriteLine(TraceEventType.Information, $"Opening port {port.PortName}: baudrate={port.BaudRate}b/s, parity={port.Parity}, databits={port.DataBits}, stopbits={port.StopBits}");
 
             bool exit = false;
 
@@ -287,6 +317,7 @@ namespace SerialMonitor
                 UI.FileHistory.AddRange(fileList);
                 fileList = null;
             }
+            trace.Flush();
 
             if (continuousMode)
             {
@@ -301,39 +332,47 @@ namespace SerialMonitor
                 }
             }
             else
-            {                   
+            {
                 UI.PrintAsHexToLogView = !setting.ShowAscii;
                 UI.ActionHelp = () => { PrintHelp(); };
                 UI.ActionPrint = (print) => { pausePrint = !print; };
                 UI.ActionPrintAsHex = (hex) => { setting.ShowAscii = !hex; };
-                UI.ActionOpenClose = (close) => { pauseConnection = close; if (close) port.Close(); UI.SetPortStatus(port); UI.SetPinStatus(port); };
-                UI.ActionSend = (data) => { UserDataSend(port,data); };
+                UI.ActionOpenClose = (close) =>
+                {
+                    pauseConnection = close;
+                    if (close)
+                        PortClose(port);
+                    UI.SetPortStatus(port);
+                    UI.SetPinStatus(port);
+                };
+                UI.ActionSend = (data) => { UserDataSend(port, data); };
                 UI.ActionSendFile = (file) => { UserDataSendFile(port, file); };
                 UI.ActionRts = () => { port.RtsEnable = !port.RtsEnable; UI.SetPortStatus(port); UI.SetPinStatus(port); };
                 UI.ActionDtr = () => { port.DtrEnable = !port.DtrEnable; UI.SetPortStatus(port); UI.SetPinStatus(port); };
                 UI.ActionCommand = (text) => { ProcessCommand(text); };
                 UI.ActionSettingLoad = () => { return setting; };
-                UI.ActionSettingSave = (setting) => { 
-                    if(port.PortName != setting.Port || port.BaudRate != setting.BaudRate)
+                UI.ActionSettingSave = (setting) =>
+                {
+                    if (port.PortName != setting.Port || port.BaudRate != setting.BaudRate || port.Parity != setting.Parity)
                     {
-                        if (port.IsOpen)
+                        bool wasopen = port.IsOpen;
+                        if (wasopen)
                         {
                             pauseConnection = true;
-                            port.Close();
-                            port.PortName = setting.Port;
-                            port.BaudRate = setting.BaudRate;
-                            pauseConnection = false;
-                            port.Open();
+                            PortClose(port);
                         }
-                        else
+                        port.PortName = setting.Port;
+                        port.BaudRate = setting.BaudRate;
+                        port.Parity = setting.Parity;
+                        if (wasopen)
                         {
-                            port.PortName = setting.Port;
-                            port.BaudRate = setting.BaudRate;
+                            pauseConnection = false;
+                            PortOpen(port);
                         }
-                        UI.SetPortStatus(port);                        
+                        UI.SetPortStatus(port);
                     }
-                    
-                    return Config.SaveSetting(setting.Port, setting.BaudRate, setting.ShowTime, setting.ShowTimeGap, setting.ShowSentData, setting.ShowAscii);
+
+                    return Config.SaveSetting(setting.Port, setting.BaudRate, setting.Parity, setting.ShowTime, setting.ShowTimeGap, setting.ShowSentData, setting.ShowAscii);
                 };
 
                 UI.SetPortStatus(port);
@@ -344,7 +383,7 @@ namespace SerialMonitor
                         if (lastTry.AddSeconds(5) <= DateTime.Now)
                         {
                             lastTry = DateTime.Now;
-                            if (PortConnect(port))
+                            if (PortOpen(port))
                             {
                                 UI.SetPortStatus(port);
                                 UI.SetPinStatus(port);
@@ -356,6 +395,10 @@ namespace SerialMonitor
 
                 Exit();
             }
+
+            _watcher?.Dispose();
+            trace.Flush();
+            trace.Close();
         }
 
         /// <summary>
@@ -386,7 +429,7 @@ namespace SerialMonitor
         }
 
         /// <summary>
-        /// Send tada typed by user
+        /// Send data typed by user
         /// </summary>
         /// <param name="port"></param>
         /// <param name="line"></param>
@@ -399,18 +442,23 @@ namespace SerialMonitor
                 return false;
             }
 
+            if (!port.IsOpen)
+            {
+                ConsoleWriteError("Port is closed.");
+                return false;
+            }
+
             bool hex = false;
             byte[] data;
 
-            if (line.StartsWith("0x", StringComparison.InvariantCultureIgnoreCase))
+            if (line.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
                 hex = true;
 
             if (hex)
             {
-                string prepared = line.Replace("0x", "");
-                Regex reg = new Regex("^([0-9A-Fa-f]{1,2}\\s*)+$");
+                string prepared = line.Replace("0x", "", StringComparison.OrdinalIgnoreCase);
 
-                if (!reg.IsMatch(prepared))
+                if (!hexRegex.IsMatch(prepared))
                 {
                     ConsoleWriteError("Message is not well formated. Data will be not sent.");
                     return false;
@@ -522,7 +570,7 @@ namespace SerialMonitor
         {
             do
             {
-                if (!PortConnect(port))
+                if (!PortOpen(port))
                 {
                     string waitText = "Waiting 5s to reconnect...";
                     ConsoleWrite(waitText);
@@ -544,6 +592,10 @@ namespace SerialMonitor
                     ConsoleWrite(new string(' ', waitText.Length + 5));
                     ConsoleCursorLeftReset();
                 }
+                else
+                {
+                    ConsoleWriteLine(TraceEventType.Information, $" Port {port.PortName} opened");
+                }
 
                 // TODO: 
                 /*
@@ -563,11 +615,12 @@ namespace SerialMonitor
         /// </summary>
         /// <param name="port"></param>
         /// <returns></returns>
-        private static bool PortConnect(SerialPort port)
+        private static bool PortOpen(SerialPort port)
         {
             try
             {
                 port.Open();
+                ConsoleWriteLine(TraceEventType.Information, $" Port {port.PortName} opened");
             }
             catch (IOException ex)
             {
@@ -595,8 +648,9 @@ namespace SerialMonitor
         {
             if (port.IsOpen)
                 port.Close();
+            ConsoleWriteLine(TraceEventType.Information, $" Port {port.PortName} closed");
         }
-        
+
         /// <summary>
         /// Validating file name(path)
         /// </summary>
@@ -604,7 +658,7 @@ namespace SerialMonitor
         /// <returns></returns>
         private static bool IsFileNameValid(string filePath)
         {
-            foreach (char c in System.IO.Path.GetInvalidPathChars())
+            foreach (char c in Path.GetInvalidPathChars())
             {
                 if (filePath.Contains(c.ToString()))
                 {
@@ -614,9 +668,9 @@ namespace SerialMonitor
                 }
             }
 
-            foreach (char c in System.IO.Path.GetInvalidFileNameChars())
+            foreach (char c in Path.GetInvalidFileNameChars())
             {
-                if (System.IO.Path.GetFileName(filePath).Contains(c.ToString()))
+                if (Path.GetFileName(filePath).Contains(c.ToString()))
                 {
                     ConsoleWriteError($"File name {filePath} contains invalid character [{c}]. Enter right file name.");
 
@@ -625,6 +679,29 @@ namespace SerialMonitor
             }
 
             return true;
+        }
+
+        /// <summary>
+        /// Event of changed repeat file
+        /// </summary>
+        /// <param name="source"></param>
+        /// <param name="e"></param>
+        /// <exception cref="RepeatFileException"></exception>
+        private static void OnRepeatFileChanged(object source, FileSystemEventArgs e)
+        {
+            try
+            {
+                _watcher!.EnableRaisingEvents = false;
+
+                ConsoleWriteLine($"File {e.FullPath} was changed. Repeat file will be read now in a while...");
+                Thread.Sleep(500);
+                PrepareRepeatFile(e.FullPath);
+            }
+
+            finally
+            {
+                _watcher!.EnableRaisingEvents = true;
+            }
         }
 
         /// <summary>
@@ -639,99 +716,126 @@ namespace SerialMonitor
             {
                 try
                 {
+                    if (_watcher == null)
+                    {
+                        var directory = Path.GetDirectoryName(fileName);
+                        if (string.IsNullOrEmpty(directory))
+                            directory = Directory.GetCurrentDirectory();
+                        var fileNameFiltered = Path.GetFileName(fileName);
+                        _watcher = new FileSystemWatcher(directory, fileNameFiltered);
+                        _watcher.NotifyFilter = NotifyFilters.LastWrite;
+                        _watcher.Changed += new FileSystemEventHandler(OnRepeatFileChanged);
+                        _watcher.EnableRaisingEvents = true;
+                    }
                     string[] lines = File.ReadAllLines(fileName);
 
                     if (lines.Length == 0)
-                        ConsoleWriteError($"Zero lines in file {fileName}");
+                    {
+                        ConsoleWriteError($"No line in file {fileName}");
+                        return;
+                    }
 
-                    ConsoleWriteLine($"File {fileName} opened and {lines.Length} lines has been read");
+                    ConsoleWriteLine(TraceEventType.Information, $"File {fileName} opened and {lines.Length} lines has been read");
 
-                    repeaterMap.Clear();
+                    repeaterStringMap.Clear();
+                    repeaterHexMap.Clear();
 
-                    //check format file
-                    string startLine = lines[0];
+                    // check format file
+                    // first line without comment
+                    string? startLine = lines.FirstOrDefault(x => !x.Trim().StartsWith('#'));
+                    if (startLine == null)
+                    {
+                        ConsoleWriteError($"No line without comment ('#') in file {fileName}");
+                        return;
+                    }
+
                     int linesWithData = 0;
-                    string ask = "";
 
-                    Regex reg = new Regex("^(0x[0-9A-Fa-f]{1,2}\\s*)+$");
+                    Regex reg = new Regex(@"^(?!\s*$)(?:(0x[0-9A-Fa-f]{1,2})*|(\$\d+)*|(\@.+)*| )+$");
                     // match hex string
                     if (reg.IsMatch(startLine))
                     {
-                        ConsoleWriteLine("First line corresponds hex format. File will be read and packets compared as HEX.");
-
-                        Regex regWhite = new Regex("\\s+");
-
+                        ConsoleWriteLine(TraceEventType.Information, "First line corresponds hex format. File will be read and packets compared as HEX.");
+                        // remove empty lines
+                        lines = lines.Select(x => x.Trim()).Where(x => x.Length > 0 && !x.StartsWith('#')).ToArray();
+                        HexData? ask = null;
                         //check whole file
                         for (int i = 0; i < lines.Length; i++)
                         {
-                            if (lines[i].Trim().Length > 0)
+                            var line = lines[i];
+
+                            if (reg.IsMatch(line))
                             {
-                                if (reg.IsMatch(lines[i]))
-                                {
-                                    if (++linesWithData % 2 == 1)
-                                        ask = regWhite.Replace(lines[i].Replace("0x", ""), "");
-                                    else
-                                        repeaterMap.Add(ask, regWhite.Replace(lines[i].Replace("0x", ""), ""));
-                                }
+                                if (++linesWithData % 2 == 1)
+                                    ask = HexData.Create(line);
                                 else
-                                {
-                                    throw new RepeatFileException("Line {0} not coresponds to hex format.", i);
-                                }
+                                    repeaterHexMap.TryAdd(ask!, HexData.Create(line));
+                            }
+                            else
+                            {
+                                throw new RepeatFileException("Line {0} not coresponds to hex format.", i);
                             }
                         }
 
                         repeaterUseHex = true;
+                        ConsoleWriteLine(TraceEventType.Information, $"{repeaterHexMap.Count} pairs ask/answer ready");
                     }
                     else
                     {
                         reg = new Regex("^([0-9A-Fa-f])+$");
                         // match hex string
                         if (reg.IsMatch(startLine))
-                        {                            
-                            ConsoleWriteLine("First line corresponds hex format. File will be read and packets compared as HEX.");
-
+                        {
+                            ConsoleWriteLine(TraceEventType.Information, "First line corresponds hex format. File will be read and packets compared as HEX.");
+                            // remove empty lines
+                            lines = lines.Select(x => x.Trim()).Where(x => x.Length > 0 && !x.StartsWith('#')).ToArray();
+                            HexData? ask = null;
                             //check whole file
                             for (int i = 0; i < lines.Length; i++)
                             {
-                                if (lines[i].Trim().Length > 0)
-                                {
-                                    if (lines[i].Length % 2 == 1)
-                                    {
-                                        throw new RepeatFileException("Line {0} has odd number of characters.", i);
-                                    }
+                                var line = lines[i];
 
-                                    if (reg.IsMatch(lines[i]))
-                                    {
-                                        if (++linesWithData % 2 == 1)
-                                            ask = lines[i];
-                                        else
-                                            repeaterMap.Add(ask, lines[i]);
-                                    }
+                                if (line.Length % 2 == 1)
+                                {
+                                    throw new RepeatFileException("Line {0} has odd number of characters.", i);
+                                }
+
+                                if (reg.IsMatch(line))
+                                {
+                                    var data = HexData.Create(line);
+                                    if (++linesWithData % 2 == 1)
+                                        ask = data;
                                     else
-                                    {
-                                        throw new RepeatFileException("Line {0} not coresponds to hex format.", i);
-                                    }
+                                        repeaterHexMap.TryAdd(ask!, data);
+                                }
+                                else
+                                {
+                                    throw new RepeatFileException("Line {0} not coresponds to hex format.", i);
                                 }
                             }
 
                             repeaterUseHex = true;
+                            ConsoleWriteLine(TraceEventType.Information, $"{repeaterHexMap.Count} pairs ask/answer ready");
                         }
                         else
                         {
                             // non hex string
-                            ConsoleWriteLine("First line not corresponds hex format. File will be read and packets compared as ASCII.");
-
+                            ConsoleWriteLine(TraceEventType.Information, "First line not corresponds hex format. File will be read and packets compared as ASCII.");
+                            string ask = string.Empty;
                             //check whole file
                             for (int i = 0; i < lines.Length; i++)
                             {
-                                if (lines[i].Trim().Length > 0)
-                                {
-                                    if (++linesWithData % 2 == 1)
-                                        ask = lines[i];
-                                    else
-                                        repeaterMap.Add(ask, lines[i]);
-                                }
+                                var line = lines[i].Trim();
+                                // empty or commented line
+                                if (line.Length == 0 || line.StartsWith('#'))
+                                    continue;
+                                if (++linesWithData % 2 == 1)
+                                    ask = line;
+                                else
+                                    repeaterStringMap.TryAdd(ask, line);
                             }
+
+                            ConsoleWriteLine(TraceEventType.Information, $"{repeaterStringMap.Count} pairs ask/answer ready");
                         }
                     }
 
@@ -739,13 +843,16 @@ namespace SerialMonitor
                         ConsoleWriteError($"Odd number of lines in file {fileName} with code. One line ask, one line answer.");
 
                     repeaterEnabled = true;
-
-                    ConsoleWriteLine($"{repeaterMap.Count} pairs ask/answer ready");
+                }
+                catch (FormatException ex)
+                {
+                    ConsoleWriteError($"Format mismatch in file {fileName}");
+                    ConsoleWriteError(ex.Message);
                 }
                 catch (Exception ex)
                 {
                     ConsoleWriteError($"Cannot read file {fileName}");
-                    ConsoleWriteError(ex.ToString());
+                    ConsoleWriteError(ex.Message);
                 }
             }
         }
@@ -779,23 +886,20 @@ namespace SerialMonitor
         /// <param name="sender"></param>
         /// <param name="e"></param>
         static void port_DataReceived(object sender, SerialDataReceivedEventArgs e)
-        {            
+        {
             SerialPort port = ((SerialPort)sender);
             int byteCount;
-            int cycle = 0;
-
             try
             {
                 do
                 {
                     byteCount = port.BytesToRead;
                     Thread.Sleep(2);
-                    cycle++;
                 } while (byteCount < port.BytesToRead);
 
                 if (incoming.Length < byteCount)
                     incoming = new byte[byteCount];
-                
+
                 port.Read(incoming, 0, byteCount);
             }
             catch (Exception ex)
@@ -807,7 +911,7 @@ namespace SerialMonitor
             TimeSpan time = DateTime.Now.TimeOfDay;
             bool applyGapTolerance = false;
 
-            //print time since last receive only if not disabled
+            // print time since last receive only if not disabled
             if (lastTimeReceved > 0)
             {
                 double sinceLastReceive = ((double)(time.Ticks - lastTimeReceved) / 10000);
@@ -817,32 +921,26 @@ namespace SerialMonitor
                     ConsoleWriteCommunication(ConsoleColor.Magenta, "\n+" + sinceLastReceive.ToString("F3") + " ms");
             }
 
-            //Write to output
+            // Write to output
             string line = "";
 
+            if (!applyGapTolerance)
+            {
+                if (setting.ShowTimeGap || setting.ShowTime)
+                    ConsoleWriteCommunication(ConsoleColor.Yellow, "\n");
+                if (setting.ShowTime)
+                    ConsoleWriteCommunication(ConsoleColor.Yellow, time.ToString());
+            }
+
+            if (setting.ShowTime || applyGapTolerance || !gapToleranceEnable)
+                ConsoleWriteCommunication(ConsoleColor.Yellow, " ");
+
             if (setting.ShowAscii)
-            {
-                if (!setting.ShowTime || applyGapTolerance)
-                    line = ASCIIEncoding.ASCII.GetString(incoming,0,byteCount);
-                else
-                    line = time.ToString() + " " + Encoding.ASCII.GetString(incoming, 0, byteCount);
-            }
+                line = ASCIIEncoding.ASCII.GetString(incoming, 0, byteCount);
             else
-            {
-                if (!setting.ShowTime || applyGapTolerance)
-                    line = string.Join(" ", incoming.Take(byteCount).Select(x=> $"0x{x:X2}"));
-                else
-                    line = time.ToString() + " " + string.Join(" ", incoming.Take(byteCount).Select(x => $"0x{x:X2}"));
-            }
+                line = string.Join(' ', incoming.Take(byteCount).Select(x => $"0x{x:X2}"));
 
-            if (applyGapTolerance)
-                ConsoleWriteCommunication(ConsoleColor.Yellow, line);
-            else
-            {
-                ConsoleWriteCommunication(ConsoleColor.Yellow, "\n");
-                ConsoleWriteCommunication(ConsoleColor.Yellow, line);
-            }
-
+            ConsoleWriteCommunication(ConsoleColor.Yellow, line);
 
             lastTimeReceved = time.Ticks;
 
@@ -874,17 +972,9 @@ namespace SerialMonitor
         {
             if (repeaterUseHex)
             {
-                string ask = string.Join("", incoming.Take(byteCount).Select(x => x.ToString("X2")));
-
-                if (repeaterMap.ContainsKey(ask))
+                if (repeaterHexMap.TryGetValue(incoming, byteCount, out var answer))
                 {
-                    string answer = repeaterMap[ask];
-                    byte[] data = new byte[answer.Length / 2];
-
-                    for (int i = 0; i < data.Length; i++)
-                    {
-                        data[i] = Convert.ToByte(answer.Substring(2 * i, 2), 16);
-                    }
+                    var data = answer;
 
                     if (!setting.ShowTime)
                         ConsoleWriteCommunication(ConsoleColor.Green, string.Join("\n ", Array.ConvertAll(data, x => $"0x{x:X2}")));
@@ -895,16 +985,16 @@ namespace SerialMonitor
                 }
                 else
                 {
-                    ConsoleWriteLine("Repeater: Unknown ask");
+                    ConsoleWriteLineNoTrace("\nRepeater: Unknown ask");
                 }
             }
             else
             {
-                string ask = ASCIIEncoding.ASCII.GetString(incoming,0,byteCount);
+                string ask = ASCIIEncoding.ASCII.GetString(incoming, 0, byteCount);
 
-                if (repeaterMap.ContainsKey(ask))
+                if (repeaterStringMap.ContainsKey(ask))
                 {
-                    string answer = repeaterMap[ask];
+                    string answer = repeaterStringMap[ask];
 
                     if (!setting.ShowTime)
                         ConsoleWriteCommunication(ConsoleColor.Green, "\n" + answer);
@@ -915,7 +1005,7 @@ namespace SerialMonitor
                 }
                 else
                 {
-                    ConsoleWriteLine("Repeater: Unknown ask");
+                    ConsoleWriteLineNoTrace("Repeater: Unknown ask");
                 }
             }
 
@@ -928,7 +1018,7 @@ namespace SerialMonitor
         /// <param name="text"></param>
         private static void ConsoleWriteError(string text)
         {
-            ConsoleWriteLine(ConsoleColor.Red, text);
+            ConsoleWriteLine(TraceEventType.Error, text);
         }
 
         /// <summary>
@@ -939,11 +1029,8 @@ namespace SerialMonitor
         {
             if (!continuousMode)
                 UI.Write(message);
-            else
+            else if (!serviceMode)
                 Console.Write(message);
-
-            if (logfile && !logincomingonly)
-                Trace.Write(message);
         }
 
         /// <summary>
@@ -956,15 +1043,16 @@ namespace SerialMonitor
             {
                 UI.WriteLine(message);
             }
-            else
+            else if (!serviceMode)
             {
                 if (Console.CursorLeft > 0)
                     Console.WriteLine("");
                 Console.WriteLine(message);
             }
-
-            if (logfile && !logincomingonly)
-                Trace.WriteLine(string.Format(message));
+            else
+            {
+                Trace(TraceEventType.Information, message);
+            }
         }
 
         /// <summary>
@@ -972,21 +1060,30 @@ namespace SerialMonitor
         /// </summary>
         /// <param name="color"></param>
         /// <param name="message"></param>
-        private static void ConsoleWriteLine(ConsoleColor color, string message)
+        private static void ConsoleWriteLine(TraceEventType eventType, string message)
         {
             if (!continuousMode)
             {
-                UI.WriteLine(message, color);
+                UI.WriteLine(message,
+                    eventType == TraceEventType.Critical ? ConsoleColor.DarkRed
+                    : eventType == TraceEventType.Error ? ConsoleColor.Red
+                    : eventType == TraceEventType.Warning ? ConsoleColor.Yellow
+                    : ConsoleColor.White
+                    );
             }
-            else
+            else if (!serviceMode || eventType <= TraceEventType.Information)
             {
-                Console.ForegroundColor = color;
+                Console.ForegroundColor = eventType == TraceEventType.Critical ? ConsoleColor.DarkRed
+                    : eventType == TraceEventType.Error ? ConsoleColor.Red
+                    : eventType == TraceEventType.Warning ? ConsoleColor.Yellow
+                    : ConsoleColor.White;
                 Console.WriteLine(message);
                 Console.ResetColor();
             }
-
-            if (logfile && !logincomingonly)
-                Trace.WriteLine(string.Format(message));
+            else
+            {
+                Trace(eventType, message);
+            }
         }
 
         /// <summary>
@@ -997,7 +1094,7 @@ namespace SerialMonitor
         {
             if (!continuousMode)
                 UI.WriteLine(message);
-            else
+            else if (!serviceMode)
                 Console.WriteLine(message);
         }
 
@@ -1012,7 +1109,7 @@ namespace SerialMonitor
             {
                 UI.WriteLine(message, color);
             }
-            else
+            else if (!serviceMode)
             {
                 Console.ForegroundColor = color;
                 Console.WriteLine(message);
@@ -1033,7 +1130,7 @@ namespace SerialMonitor
                 {
                     UI.Write(message, color);
                 }
-                else
+                else if (!serviceMode)
                 {
                     Console.ForegroundColor = color;
                     ConsoleWrite(message);
@@ -1042,7 +1139,11 @@ namespace SerialMonitor
             }
 
             if (logfile)
-                Trace.Write(string.Format(message));
+            {
+                // log all received data (yellov color) or others if enabled
+                if (!logincomingonly || color == ConsoleColor.Yellow)
+                    TraceData(string.Format(message));
+            }
         }
 
         /// <summary>
@@ -1052,9 +1153,13 @@ namespace SerialMonitor
         private static void ConsoleCursorLeft(int moveBy)
         {
             if (continuousMode)
-                Console.CursorLeft += moveBy;
-            //else
-            //    Cinout.CursorLeft(moveBy);
+            {
+                var newposition = Console.CursorLeft + moveBy;
+                if (newposition > 0 && newposition < Console.BufferWidth)
+                {
+                    Console.CursorLeft += moveBy;
+                }
+            }
         }
 
         /// <summary>
@@ -1064,8 +1169,6 @@ namespace SerialMonitor
         {
             if (continuousMode)
                 Console.CursorLeft = 0;
-            //else
-            //    Cinout.CursorLeftReset();
         }
 
         /// <summary>
@@ -1087,7 +1190,8 @@ namespace SerialMonitor
             ConsoleWriteLineNoTrace("-showascii: communication would be show in ASCII format (otherwise HEX is used)");
             ConsoleWriteLineNoTrace("-notime: time information about incoming data would not be printed");
             ConsoleWriteLineNoTrace("-gaptolerance {{time gap in ms}}: messages received within specified time gap will be printed together");
-            ConsoleWriteLineNoTrace("-nogui: start program in normal console mode (scrolling list). Not with primitive text GUI");
+            ConsoleWriteLineNoTrace("-nogui: start program in normal console mode (scrolling list). Not with text GUI");
+            ConsoleWriteLineNoTrace("-service: start program in normal console mode with minimal verbose");
 
             ConsoleWriteLineNoTrace("");
             ConsoleWriteLineNoTrace("Example: serialmonitor COM1");
@@ -1100,18 +1204,19 @@ namespace SerialMonitor
             ConsoleWriteLineNoTrace("F2: setup program");
             ConsoleWriteLineNoTrace("F3: toggle between data print format (HEX / ASCII)");
             ConsoleWriteLineNoTrace("F4: pause/resume connection to serial port");
-            ConsoleWriteLineNoTrace("F5: send specified data (in HEX format if data start with 0x otherwise ASCII is send)");
-            ConsoleWriteLineNoTrace("F6: send specified file)");
+            ConsoleWriteLineNoTrace("F5: send a data (in HEX format if data start with 0x otherwise ASCII is send)");
+            ConsoleWriteLineNoTrace("F6: send a file");
 
-            ConsoleWriteLineNoTrace("F10: program exit");
-            ConsoleWriteLineNoTrace("F11: toggle RTS pin");
-            ConsoleWriteLineNoTrace("F12: toggle DTR pin");
+            ConsoleWriteLineNoTrace("^Q: program exit");
+            ConsoleWriteLineNoTrace("F11 or ^1: toggle RTS pin");
+            ConsoleWriteLineNoTrace("F12 or ^2: toggle DTR pin");
             ConsoleWriteLineNoTrace("^P: pause / resume print on screen");
 
             ConsoleWriteLineNoTrace("");
             ConsoleWriteLineNoTrace("In program commands:");
             ConsoleWriteLineNoTrace("help: print help");
             ConsoleWriteLineNoTrace("send <message>: send message");
+            ConsoleWriteLineNoTrace("exit: exit the program");
 
             if (continuousMode)
             {
@@ -1136,11 +1241,43 @@ namespace SerialMonitor
         {
             port.Close();
 
-            Config.SaveSetting(setting.Port, setting.BaudRate, setting.ShowTime, setting.ShowTimeGap, setting.ShowSentData, setting.ShowAscii);
+            Config.SaveSetting(setting.Port, setting.BaudRate, setting.Parity, setting.ShowTime, setting.ShowTimeGap, setting.ShowSentData, setting.ShowAscii);
             Config.SaveHistory(UI.CommandHistory);
             Config.SaveFileList(UI.FileHistory);
 
+            trace.Close();
             UI.Exit();
+        }
+
+        /// <summary>
+        /// Log system message
+        /// </summary>
+        /// <param name="eventType"></param>
+        /// <param name="message"></param>
+        private static void Trace(TraceEventType eventType, string message)
+        {
+            if (trace.Switch.ShouldTrace(eventType))
+            {
+                string tracemessage = $"{DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.FFF")}\t[{eventType}]\t{string.Format(message)}";
+                foreach (TraceListener listener in trace.Listeners)
+                {
+                    listener.WriteLine(tracemessage);
+                    listener.Flush();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Log data message
+        /// </summary>
+        /// <param name="message"></param>
+        private static void TraceData(string message)
+        {
+            foreach (TraceListener listener in traceData.Listeners)
+            {
+                listener.WriteLine(message);
+                listener.Flush();
+            }
         }
     }
 }

@@ -21,7 +21,7 @@ namespace SerialMonitor
         static readonly Label pinsLabel = new Label() { Text = "Pins: ", X = 1, Y = 1 };
         static readonly Label portName = new Label() { Text = "???", X = 8, Y = 0 };
         static readonly Label portStatus = new Label() { Text = "Closed", X = Pos.Right(portName) + 2, Y = 0 };
-        static readonly Label portSpeed = new Label() { Text = $"Speed: 0b/s", X = Pos.Right(portStatus) + 2, Y = 0 };
+        static readonly Label portParameters = new Label() { Text = $"0000000b/s", X = Pos.Right(portStatus) + 2, Y = 0 };       
         static readonly Label pinRTS = new Label() { Text = "RTS(?)", X = 8, Y = 1 };
         static readonly Label pinCTS = new Label() { Text = "CTS(?)", X = Pos.Right(pinRTS) + 2, Y = 1 };
         static readonly Label pinDTR = new Label() { Text = "DTR(?)", X = Pos.Right(pinCTS) + 2, Y = 1 };
@@ -65,7 +65,7 @@ namespace SerialMonitor
 
         public static void Init()
         {
-            Application.Init();            
+            Application.Init();
             // main window
             var win = new Window()
             {
@@ -73,13 +73,11 @@ namespace SerialMonitor
                 Y = 0,
                 Width = Dim.Fill(),
                 Height = Dim.Fill() - 1,
-#pragma warning disable CS8602 // Dereference of a possibly null reference.
-                Title = $"SerialMonitor v.{System.Reflection.Assembly.GetEntryAssembly().GetName().Version.ToString(3)}"
-#pragma warning restore CS8602 // Dereference of a possibly null reference.
+                Title = $"SerialMonitor v.{System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3)}"
             };
 
             // hotkeys
-            Application.QuitKey = Key.F10;
+            Application.QuitKey = Key.CtrlMask | Key.q;
             win.KeyUp += (e) =>
             {
                 e.Handled = ProcessHotKey(e.KeyEvent);
@@ -92,10 +90,10 @@ namespace SerialMonitor
                 X = 0,
                 Y = 0,
                 Width = Dim.Fill(),
-                Height = 4
+                Height = 4,
             };
 
-            frameStatus.Add(portLabel, pinsLabel, portName, portStatus, portSpeed,
+            frameStatus.Add(portLabel, pinsLabel, portName, portStatus, portParameters,
                 pinRTS, pinCTS, pinDTR, pinDSR, pinCD, pinBreak, timeLabel, debugLabel);
 
             timeLabel.X = Pos.Right(frameStatus) - 10;
@@ -208,7 +206,7 @@ namespace SerialMonitor
         }
 
         private static bool ProcessHotKey(KeyEvent keyEvent)
-        {            
+        {
             if (keyEvent.Key == Key.F1)
             {
                 ActionHelp?.Invoke();
@@ -220,13 +218,15 @@ namespace SerialMonitor
                 var dialog = new Dialog("Setting", 50, 11, ok, cancel);
                 var lbPort = new Label("Port:") { X = 1, Y = 1 };
                 var lbSpeed = new Label("Baud rate:") { X = 1, Y = 2 };
+                var lbParity = new Label("Parity:") { X = 1, Y = 3 };
                 var tbPort = new TextField() { X = 15, Y = 1, Width = 15, Text = "" };
                 var tbSpeed = new TextField() { X = 15, Y = 2, Width = 10, Text = "" };
-                var cbTime = new CheckBox("Show transaction time") { X = 1, Y = 4 };
-                var cbTimeGap = new CheckBox("Show time between 2 transactions") { X = 1, Y = 5 };
-                var cbSent = new CheckBox("Show sent data") { X = 1, Y = 6 };
+                var tbParity = new TextField() { X = 15, Y = 3, Width = 10, Text = "" };
+                var cbTime = new CheckBox("Show transaction time") { X = 1, Y = 5 };
+                var cbTimeGap = new CheckBox("Show time between 2 transactions") { X = 1, Y = 6 };
+                var cbSent = new CheckBox("Show sent data") { X = 1, Y = 7 };
 
-                dialog.Add(lbPort, lbSpeed, tbPort, tbSpeed, cbTime, cbTimeGap, cbSent);
+                dialog.Add(lbPort, lbSpeed, lbParity, tbPort, tbSpeed, tbParity, cbTime, cbTimeGap, cbSent);
                 dialog.ColorScheme = Colors.Dialog;
 
                 if (ActionSettingLoad == null)
@@ -236,6 +236,7 @@ namespace SerialMonitor
 
                 tbPort.Text = setting.Port;
                 tbSpeed.Text = setting.BaudRate.ToString();
+                tbParity.Text = setting.Parity.ToString();
                 cbTime.Checked = setting.ShowTime;
                 cbTimeGap.Checked = setting.ShowTimeGap;
                 cbSent.Checked = setting.ShowSentData;
@@ -243,11 +244,13 @@ namespace SerialMonitor
                 ok.Clicked += () =>
                 {
                     var port = tbPort.Text.ToString();
-                    if (string.IsNullOrEmpty(port) || !int.TryParse(tbSpeed.Text.ToString(), out int baudrate))
+                    if (string.IsNullOrEmpty(port) || !int.TryParse(tbSpeed.Text.ToString(), out int baudrate)
+                        || !Enum.TryParse<Parity>(tbParity.Text.ToString(), true, out Parity parity))
                         return;
 
                     setting.Port = port;
                     setting.BaudRate = baudrate;
+                    setting.Parity = parity;
                     setting.ShowTime = cbTime.Checked;
                     setting.ShowTimeGap = cbTimeGap.Checked;
                     setting.ShowSentData = cbSent.Checked;
@@ -413,11 +416,11 @@ namespace SerialMonitor
                     // Send file data
                     ActionSendFile?.Invoke(FileHistory[fileList.SelectedItem]);
             }
-            else if (keyEvent.Key == Key.F11)
+            else if (keyEvent.Key == Key.F11 || keyEvent.Key == (Key.D1 | Key.CtrlMask))
             {
                 ActionRts?.Invoke();
             }
-            else if (keyEvent.Key == Key.F12)
+            else if (keyEvent.Key == Key.F12 || keyEvent.Key == (Key.D2 | Key.CtrlMask))
             {
                 ActionDtr?.Invoke();
             }
@@ -437,7 +440,7 @@ namespace SerialMonitor
 
         private static void SetBottomMenuText()
         {
-            menu.Text = $" F1 Help | F2 Setup | F3 {(!PrintAsHexToLogView ? "Hex " : "Text")} | F4 {(!RequestPortClose ? "Close" : "Open ")} | F5 Send | F6 SendFile | F10 Exit | F11 RTS | F12 DTR | ^P {(!PrintToLogView ? "Print" : "Pause")}";
+            menu.Text = $" F1 Help | F2 Setup | F3 {(!PrintAsHexToLogView ? "Hex " : "Text")} | F4 {(!RequestPortClose ? "Close" : "Open ")} | F5 Send | F6 SendFile | F11 RTS | F12 DTR | ^P {(!PrintToLogView ? "Print" : "Pause")} | ^Q Exit";
         }
 
         public static void Run(Func<MainLoop, bool> action)
@@ -451,7 +454,7 @@ namespace SerialMonitor
         {
             portName.Text = port.PortName;
             portStatus.Text = port.IsOpen ? "Opened" : "Closed";
-            portSpeed.Text = $"{port.BaudRate}b/s";
+            portParameters.Text = $"{port.BaudRate}b/s  Parity: {port.Parity}";
         }
 
         internal static void SetPinStatus(SerialPort port)
@@ -471,7 +474,24 @@ namespace SerialMonitor
         {
             if (!PrintToLogView)
                 return;
-            lines.Add(message);
+            bool added = false;
+            if (logView.GetCurrentWidth(out var width) && width > 0)
+            {
+                if (message.Length > width)
+                {
+                    foreach (var chunk in message.Chunk(width).Select(x => new string(x)))
+                        lines.Add(chunk);
+                    added = true;
+                }
+            }
+            if (!added)
+            {
+                if (message.Length == 0)
+                    lines.Add(" ");
+                else
+                    lines.Add(message);
+            }
+
             if (!logView.IsInitialized)
                 return;
 
@@ -484,9 +504,29 @@ namespace SerialMonitor
             if (!PrintToLogView)
                 return;
             if (lines.IsEmpty)
-                lines.Add(message);
+            {
+                WriteLine(message, color);
+                return;
+            }
+
+            if (logView.GetCurrentWidth(out var width))
+            {
+                if (lines.Last.Length + message.Length < width)
+                {
+                    lines.Last += message;
+                }
+                else
+                {
+                    var messages = lines.Last.Concat(message).Chunk(width).Select(x => new string(x)).ToList();
+                    lines.Last = messages.First();
+                    foreach (var chunk in messages.Skip(1))
+                        WriteLine(chunk, color);
+                }
+            }
             else
+            {
                 lines.Last += message;
+            }
         }
 
         internal static void Write(string message, ConsoleColor color = ConsoleColor.White)

@@ -1,0 +1,5 @@
+#!/bin/bash
+
+ln -s /usr/share/serialmonitor/SerialMonitor /usr/bin/serialmonitor
+systemctl enable serialmonitor
+
