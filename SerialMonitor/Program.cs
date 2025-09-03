@@ -735,7 +735,7 @@ namespace SerialMonitor
                         return;
                     }
 
-                    ConsoleWriteLine($"File {fileName} opened and {lines.Length} lines has been read");
+                    ConsoleWriteLine(TraceEventType.Information, $"File {fileName} opened and {lines.Length} lines has been read");
 
                     repeaterStringMap.Clear();
                     repeaterHexMap.Clear();
@@ -755,7 +755,7 @@ namespace SerialMonitor
                     // match hex string
                     if (reg.IsMatch(startLine))
                     {
-                        ConsoleWriteLine("First line corresponds hex format. File will be read and packets compared as HEX.");
+                        ConsoleWriteLine(TraceEventType.Information, "First line corresponds hex format. File will be read and packets compared as HEX.");
                         // remove empty lines
                         lines = lines.Select(x => x.Trim()).Where(x => x.Length > 0 && !x.StartsWith('#')).ToArray();
                         HexData? ask = null;
@@ -778,7 +778,7 @@ namespace SerialMonitor
                         }
 
                         repeaterUseHex = true;
-                        ConsoleWriteLine($"{repeaterHexMap.Count} pairs ask/answer ready");
+                        ConsoleWriteLine(TraceEventType.Information, $"{repeaterHexMap.Count} pairs ask/answer ready");
                     }
                     else
                     {
@@ -786,7 +786,7 @@ namespace SerialMonitor
                         // match hex string
                         if (reg.IsMatch(startLine))
                         {
-                            ConsoleWriteLine("First line corresponds hex format. File will be read and packets compared as HEX.");
+                            ConsoleWriteLine(TraceEventType.Information, "First line corresponds hex format. File will be read and packets compared as HEX.");
                             // remove empty lines
                             lines = lines.Select(x => x.Trim()).Where(x => x.Length > 0 && !x.StartsWith('#')).ToArray();
                             HexData? ask = null;
@@ -815,12 +815,12 @@ namespace SerialMonitor
                             }
 
                             repeaterUseHex = true;
-                            ConsoleWriteLine($"{repeaterHexMap.Count} pairs ask/answer ready");
+                            ConsoleWriteLine(TraceEventType.Information, $"{repeaterHexMap.Count} pairs ask/answer ready");
                         }
                         else
                         {
                             // non hex string
-                            ConsoleWriteLine("First line not corresponds hex format. File will be read and packets compared as ASCII.");
+                            ConsoleWriteLine(TraceEventType.Information, "First line not corresponds hex format. File will be read and packets compared as ASCII.");
                             string ask = string.Empty;
                             //check whole file
                             for (int i = 0; i < lines.Length; i++)
@@ -835,7 +835,7 @@ namespace SerialMonitor
                                     repeaterStringMap.TryAdd(ask, line);
                             }
 
-                            ConsoleWriteLine($"{repeaterStringMap.Count} pairs ask/answer ready");
+                            ConsoleWriteLine(TraceEventType.Information, $"{repeaterStringMap.Count} pairs ask/answer ready");
                         }
                     }
 
