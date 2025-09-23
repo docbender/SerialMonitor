@@ -8,6 +8,7 @@
 //
 //---------------------------------------------------------------------------
 
+using System.Diagnostics;
 using System.IO.Ports;
 using Terminal.Gui;
 
@@ -15,13 +16,13 @@ namespace SerialMonitor
 {
     internal class UI
     {
-        static readonly RingBuffer<string> lines = new RingBuffer<string>(500);
+        static readonly RingBuffer<LogRecord> lines = new RingBuffer<LogRecord>(500);
         // port label
         static readonly Label portLabel = new Label() { Text = "Port: ", X = 1, Y = 0 };
         static readonly Label pinsLabel = new Label() { Text = "Pins: ", X = 1, Y = 1 };
         static readonly Label portName = new Label() { Text = "???", X = 8, Y = 0 };
         static readonly Label portStatus = new Label() { Text = "Closed", X = Pos.Right(portName) + 2, Y = 0 };
-        static readonly Label portParameters = new Label() { Text = $"0000000b/s", X = Pos.Right(portStatus) + 2, Y = 0 };       
+        static readonly Label portParameters = new Label() { Text = $"0000000b/s", X = Pos.Right(portStatus) + 2, Y = 0 };
         static readonly Label pinRTS = new Label() { Text = "RTS(?)", X = 8, Y = 1 };
         static readonly Label pinCTS = new Label() { Text = "CTS(?)", X = Pos.Right(pinRTS) + 2, Y = 1 };
         static readonly Label pinDTR = new Label() { Text = "DTR(?)", X = Pos.Right(pinCTS) + 2, Y = 1 };
@@ -48,6 +49,7 @@ namespace SerialMonitor
         public static Action<bool>? ActionOpenClose;
         public static Action<string?>? ActionSend;
         public static Action<string?>? ActionSendFile;
+        public static Action<string?>? ActionFilter;
         public static Action? ActionRts;
         public static Action? ActionDtr;
         public static Action<string?>? ActionCommand;
@@ -185,6 +187,18 @@ namespace SerialMonitor
                 _scrollBar.Refresh();
             };
 
+            logView.RowRender += (e) =>
+            {
+                if (e.Row == logView.SelectedItem)
+                    return;
+                /*
+                if (e.Row % 2 == 0)
+                    e.RowAttribute = new Terminal.Gui.Attribute(Color.Green, Color.Black);
+                else
+                    e.RowAttribute = new Terminal.Gui.Attribute(Color.Black, Color.Green);
+                */
+            };
+
             // add shortcut menu
             Application.Top.Add(menu);
             menu.Y = Pos.Bottom(Application.Top) - 1;
@@ -273,9 +287,55 @@ namespace SerialMonitor
             }
             else if (keyEvent.Key == Key.F4)
             {
-                RequestPortClose = !RequestPortClose;
-                ActionOpenClose?.Invoke(RequestPortClose);
-                SetBottomMenuText();
+                // dialog
+                bool filterpressed = false;
+                var filter = new Button("Filter");
+                var cancel = new Button("Cancel");
+                var clear = new Button("Clear");
+                var dialog = new Dialog("Filter data that start with...", 50, 6, filter, cancel, clear);
+                var textField = new TextField()
+                {
+                    X = Pos.Center(),
+                    Y = Pos.Center(),
+                    Width = Dim.Fill() - 2
+                };
+                textField.KeyUp += (key) =>
+                {
+                    if (key.KeyEvent.Key == Key.Enter)
+                    {
+                        filterpressed = true;
+                        Application.RequestStop();
+                    }
+                };
+                dialog.Add(textField);
+
+                filter.Clicked += () =>
+                {
+                    filterpressed = true;
+                    Application.RequestStop();
+                };
+                cancel.Clicked += () =>
+                {
+                    Application.RequestStop();
+                };
+                clear.Clicked += () =>
+                {
+                    textField.Text = "";
+                    filterpressed = true;
+                    Application.RequestStop();
+                };
+                if (lines.Filtered)
+                    textField.Text = lines.Filter;
+                textField.SetFocus();
+                Application.Run(dialog);
+
+                if (filterpressed)
+                {
+                    var filterText = textField.Text.ToString();
+                    lines.SetFilter(filterText);
+                    SetBottomMenuText();
+                    ActionFilter?.Invoke(filterText);
+                }
             }
             else if (keyEvent.Key == Key.F5)
             {
@@ -416,6 +476,12 @@ namespace SerialMonitor
                     // Send file data
                     ActionSendFile?.Invoke(FileHistory[fileList.SelectedItem]);
             }
+            else if (keyEvent.Key == Key.F9)
+            {
+                RequestPortClose = !RequestPortClose;
+                ActionOpenClose?.Invoke(RequestPortClose);
+                SetBottomMenuText();
+            }
             else if (keyEvent.Key == Key.F11 || keyEvent.Key == (Key.D1 | Key.CtrlMask))
             {
                 ActionRts?.Invoke();
@@ -440,7 +506,7 @@ namespace SerialMonitor
 
         private static void SetBottomMenuText()
         {
-            menu.Text = $" F1 Help | F2 Setup | F3 {(!PrintAsHexToLogView ? "Hex " : "Text")} | F4 {(!RequestPortClose ? "Close" : "Open ")} | F5 Send | F6 SendFile | F11 RTS | F12 DTR | ^P {(!PrintToLogView ? "Print" : "Pause")} | ^Q Exit";
+            menu.Text = $" F1 Help | F2 Setup | F3 {(!PrintAsHexToLogView ? "Hex " : "Text")} | F4 {(lines.Filtered ? "FILTER" : "Filter")} | F5 Send | F6 SendFile | F9 {(!RequestPortClose ? "Close" : "Open ")} | F11 RTS | F12 DTR | ^P {(!PrintToLogView ? "Print" : "Pause")} | ^Q Exit";
         }
 
         public static void Run(Func<MainLoop, bool> action)
@@ -470,7 +536,7 @@ namespace SerialMonitor
             pinBreak.Text = $"Break({(port.BreakState ? 1 : "0")})";
         }
 
-        internal static void WriteLine(string message, ConsoleColor color = ConsoleColor.White)
+        internal static void WriteLine(string message, LogRecordType type, TraceEventType level = TraceEventType.Information)
         {
             if (!PrintToLogView)
                 return;
@@ -480,16 +546,16 @@ namespace SerialMonitor
                 if (message.Length > width)
                 {
                     foreach (var chunk in message.Chunk(width).Select(x => new string(x)))
-                        lines.Add(chunk);
+                        lines.Add(new LogRecord(chunk, type, level));
                     added = true;
                 }
             }
             if (!added)
             {
                 if (message.Length == 0)
-                    lines.Add(" ");
+                    lines.Add(new LogRecord(" ", type, level));
                 else
-                    lines.Add(message);
+                    lines.Add(new LogRecord(message, type, level));
             }
 
             if (!logView.IsInitialized)
@@ -499,13 +565,13 @@ namespace SerialMonitor
                 logView.MoveDown();
         }
 
-        private static void WriteInternally(string message, ConsoleColor color = ConsoleColor.White)
+        private static void WriteInternally(string message,LogRecordType type, TraceEventType level)
         {
             if (!PrintToLogView)
                 return;
             if (lines.IsEmpty)
             {
-                WriteLine(message, color);
+                WriteLine(message, type, level);
                 return;
             }
 
@@ -513,23 +579,23 @@ namespace SerialMonitor
             {
                 if (lines.Last.Length + message.Length < width)
                 {
-                    lines.Last += message;
+                    lines.Last.Append(message);
                 }
                 else
                 {
-                    var messages = lines.Last.Concat(message).Chunk(width).Select(x => new string(x)).ToList();
-                    lines.Last = messages.First();
+                    var messages = lines.Last.Text.Concat(message).Chunk(width).Select(x => new string(x)).ToList();
+                    lines.Last.Text = messages.First();
                     foreach (var chunk in messages.Skip(1))
-                        WriteLine(chunk, color);
+                        WriteLine(chunk, type, level);
                 }
             }
             else
             {
-                lines.Last += message;
+                lines.Last.Append(message);
             }
         }
 
-        internal static void Write(string message, ConsoleColor color = ConsoleColor.White)
+        internal static void Write(string message, LogRecordType type, TraceEventType level)
         {
             if (message.Contains("\r\n") || message.Contains('\n'))
             {
@@ -537,14 +603,14 @@ namespace SerialMonitor
                 for (int i = 0; i < msgLines.Length; i++)
                 {
                     if (i == 0)
-                        WriteInternally(msgLines[i], color);
+                        WriteInternally(msgLines[i], type, level);
                     else
-                        WriteLine(msgLines[i], color);
+                        WriteLine(msgLines[i], type, level);
                 }
             }
             else
             {
-                WriteInternally(message, color);
+                WriteInternally(message, type, level);
             }
         }
     }

@@ -347,6 +347,7 @@ namespace SerialMonitor
                 };
                 UI.ActionSend = (data) => { UserDataSend(port, data); };
                 UI.ActionSendFile = (file) => { UserDataSendFile(port, file); };
+                UI.ActionFilter = (filter) => { };
                 UI.ActionRts = () => { port.RtsEnable = !port.RtsEnable; UI.SetPortStatus(port); UI.SetPinStatus(port); };
                 UI.ActionDtr = () => { port.DtrEnable = !port.DtrEnable; UI.SetPortStatus(port); UI.SetPinStatus(port); };
                 UI.ActionCommand = (text) => { ProcessCommand(text); };
@@ -516,9 +517,9 @@ namespace SerialMonitor
                     if (setting.ShowSentData)
                     {
                         if (!setting.ShowTime)
-                            ConsoleWriteCommunication(ConsoleColor.Green, "\n" + line);
+                            ConsoleWriteCommunication(LogRecordType.DataReceived, "\n" + line);
                         else
-                            ConsoleWriteCommunication(ConsoleColor.Green, "\n" + DateTime.Now.TimeOfDay.ToString() + " " + line);
+                            ConsoleWriteCommunication(LogRecordType.DataReceived, "\n" + DateTime.Now.TimeOfDay.ToString() + " " + line);
                     }
                 }
                 catch (Exception ex)
@@ -918,7 +919,7 @@ namespace SerialMonitor
                 applyGapTolerance = (gapToleranceEnable && sinceLastReceive <= gapTolerance);
 
                 if (setting.ShowTimeGap && (!gapToleranceEnable || !applyGapTolerance))
-                    ConsoleWriteCommunication(ConsoleColor.Magenta, "\n+" + sinceLastReceive.ToString("F3") + " ms");
+                    ConsoleWriteCommunication(LogRecordType.Time, "\n+" + sinceLastReceive.ToString("F3") + " ms");
             }
 
             // Write to output
@@ -927,20 +928,20 @@ namespace SerialMonitor
             if (!applyGapTolerance)
             {
                 if (setting.ShowTimeGap || setting.ShowTime)
-                    ConsoleWriteCommunication(ConsoleColor.Yellow, "\n");
+                    ConsoleWriteCommunication(LogRecordType.DataReceived, "\n");
                 if (setting.ShowTime)
-                    ConsoleWriteCommunication(ConsoleColor.Yellow, time.ToString());
+                    ConsoleWriteCommunication(LogRecordType.DataReceived, time.ToString());
             }
 
             if (setting.ShowTime || applyGapTolerance || !gapToleranceEnable)
-                ConsoleWriteCommunication(ConsoleColor.Yellow, " ");
+                ConsoleWriteCommunication(LogRecordType.DataReceived, " ");
 
             if (setting.ShowAscii)
                 line = ASCIIEncoding.ASCII.GetString(incoming, 0, byteCount);
             else
                 line = string.Join(' ', incoming.Take(byteCount).Select(x => $"0x{x:X2}"));
 
-            ConsoleWriteCommunication(ConsoleColor.Yellow, line);
+            ConsoleWriteCommunication(LogRecordType.DataReceived, line);
 
             lastTimeReceved = time.Ticks;
 
@@ -977,9 +978,9 @@ namespace SerialMonitor
                     var data = answer;
 
                     if (!setting.ShowTime)
-                        ConsoleWriteCommunication(ConsoleColor.Green, string.Join("\n ", Array.ConvertAll(data, x => $"0x{x:X2}")));
+                        ConsoleWriteCommunication(LogRecordType.DataSent, string.Join("\n ", Array.ConvertAll(data, x => $"0x{x:X2}")));
                     else
-                        ConsoleWriteCommunication(ConsoleColor.Green, "\n" + DateTime.Now.TimeOfDay.ToString() + " " + string.Join(" ", Array.ConvertAll(data, x => $"0x{x:X2}")));
+                        ConsoleWriteCommunication(LogRecordType.DataSent, "\n" + DateTime.Now.TimeOfDay.ToString() + " " + string.Join(" ", Array.ConvertAll(data, x => $"0x{x:X2}")));
 
                     return data;
                 }
@@ -997,9 +998,9 @@ namespace SerialMonitor
                     string answer = repeaterStringMap[ask];
 
                     if (!setting.ShowTime)
-                        ConsoleWriteCommunication(ConsoleColor.Green, "\n" + answer);
+                        ConsoleWriteCommunication(LogRecordType.DataSent, "\n" + answer);
                     else
-                        ConsoleWriteCommunication(ConsoleColor.Green, "\n" + DateTime.Now.TimeOfDay.ToString() + " " + answer);
+                        ConsoleWriteCommunication(LogRecordType.DataSent, "\n" + DateTime.Now.TimeOfDay.ToString() + " " + answer);
 
                     return ASCIIEncoding.ASCII.GetBytes(answer);
                 }
@@ -1018,7 +1019,7 @@ namespace SerialMonitor
         /// <param name="text"></param>
         private static void ConsoleWriteError(string text)
         {
-            ConsoleWriteLine(TraceEventType.Error, text);
+            ConsoleWriteLine(TraceEventType.Error, text, LogRecordType.Error);
         }
 
         /// <summary>
@@ -1028,7 +1029,7 @@ namespace SerialMonitor
         private static void ConsoleWrite(string message)
         {
             if (!continuousMode)
-                UI.Write(message);
+                UI.Write(message, LogRecordType.Default, TraceEventType.Information);
             else if (!serviceMode)
                 Console.Write(message);
         }
@@ -1041,7 +1042,7 @@ namespace SerialMonitor
         {
             if (!continuousMode)
             {
-                UI.WriteLine(message);
+                UI.WriteLine(message, LogRecordType.Default, TraceEventType.Information);
             }
             else if (!serviceMode)
             {
@@ -1058,31 +1059,27 @@ namespace SerialMonitor
         /// <summary>
         /// Print single line
         /// </summary>
-        /// <param name="color"></param>
+        /// <param name="level"></param>
         /// <param name="message"></param>
-        private static void ConsoleWriteLine(TraceEventType eventType, string message)
+        /// <param name="type"></param>
+        private static void ConsoleWriteLine(TraceEventType level, string message, LogRecordType type = LogRecordType.Default)
         {
             if (!continuousMode)
             {
-                UI.WriteLine(message,
-                    eventType == TraceEventType.Critical ? ConsoleColor.DarkRed
-                    : eventType == TraceEventType.Error ? ConsoleColor.Red
-                    : eventType == TraceEventType.Warning ? ConsoleColor.Yellow
-                    : ConsoleColor.White
-                    );
+                UI.WriteLine(message, type, level);
             }
-            else if (!serviceMode || eventType <= TraceEventType.Information)
+            else if (!serviceMode || level <= TraceEventType.Information)
             {
-                Console.ForegroundColor = eventType == TraceEventType.Critical ? ConsoleColor.DarkRed
-                    : eventType == TraceEventType.Error ? ConsoleColor.Red
-                    : eventType == TraceEventType.Warning ? ConsoleColor.Yellow
+                Console.ForegroundColor = level == TraceEventType.Critical ? ConsoleColor.DarkRed
+                    : level == TraceEventType.Error ? ConsoleColor.Red
+                    : level == TraceEventType.Warning ? ConsoleColor.Yellow
                     : ConsoleColor.White;
                 Console.WriteLine(message);
                 Console.ResetColor();
             }
             else
             {
-                Trace(eventType, message);
+                Trace(level, message);
             }
         }
 
@@ -1093,7 +1090,7 @@ namespace SerialMonitor
         private static void ConsoleWriteLineNoTrace(string message)
         {
             if (!continuousMode)
-                UI.WriteLine(message);
+                UI.WriteLine(message, LogRecordType.Default);
             else if (!serviceMode)
                 Console.WriteLine(message);
         }
@@ -1107,7 +1104,7 @@ namespace SerialMonitor
         {
             if (!continuousMode)
             {
-                UI.WriteLine(message, color);
+                UI.WriteLine(message, LogRecordType.Default);
             }
             else if (!serviceMode)
             {
@@ -1120,19 +1117,46 @@ namespace SerialMonitor
         /// <summary>
         /// Print line that is involved in communication
         /// </summary>
-        /// <param name="color"></param>
+        /// <param name="type"></param>
         /// <param name="message"></param>
-        private static void ConsoleWriteCommunication(ConsoleColor color, string message)
+        private static void ConsoleWriteCommunication(LogRecordType type, string message)
         {
             if (!pausePrint)
             {
                 if (!continuousMode)
                 {
-                    UI.Write(message, color);
+                    var level = type == LogRecordType.Error ? TraceEventType.Error : TraceEventType.Information;
+
+                    UI.Write(message, type, level);
                 }
                 else if (!serviceMode)
                 {
-                    Console.ForegroundColor = color;
+                    switch (type)
+                    {
+                        case LogRecordType.Time:
+                            Console.ForegroundColor = ConsoleColor.Magenta;
+                            break;
+                        case LogRecordType.ControlPinChanged:
+                            Console.ForegroundColor = ConsoleColor.Cyan;
+                            break;
+                        case LogRecordType.ControlPinOn:
+                            Console.ForegroundColor = ConsoleColor.Green;
+                            break;
+                        case LogRecordType.DataReceived:
+                            Console.ForegroundColor = ConsoleColor.Yellow;
+                            break;
+                        case LogRecordType.DataSent:
+                            Console.ForegroundColor = ConsoleColor.Green;
+                            break;
+                        case LogRecordType.Error:
+                            Console.ForegroundColor = ConsoleColor.Red;
+                            break;
+                        case LogRecordType.ControlPinOff:
+                        default:
+                            Console.ForegroundColor = ConsoleColor.White;
+                            break;
+                    }
+
                     ConsoleWrite(message);
                     Console.ResetColor();
                 }
@@ -1140,8 +1164,8 @@ namespace SerialMonitor
 
             if (logfile)
             {
-                // log all received data (yellov color) or others if enabled
-                if (!logincomingonly || color == ConsoleColor.Yellow)
+                // log all received data or others if enabled
+                if (!logincomingonly || type == LogRecordType.DataReceived)
                     TraceData(string.Format(message));
             }
         }
@@ -1203,9 +1227,10 @@ namespace SerialMonitor
             ConsoleWriteLineNoTrace("F1: print help");
             ConsoleWriteLineNoTrace("F2: setup program");
             ConsoleWriteLineNoTrace("F3: toggle between data print format (HEX / ASCII)");
-            ConsoleWriteLineNoTrace("F4: pause/resume connection to serial port");
+            ConsoleWriteLineNoTrace("F4: filter");
             ConsoleWriteLineNoTrace("F5: send a data (in HEX format if data start with 0x otherwise ASCII is send)");
             ConsoleWriteLineNoTrace("F6: send a file");
+            ConsoleWriteLineNoTrace("F9: pause/resume connection to serial port");
 
             ConsoleWriteLineNoTrace("^Q: program exit");
             ConsoleWriteLineNoTrace("F11 or ^1: toggle RTS pin");
