@@ -20,7 +20,7 @@ namespace SerialMonitor
         static readonly ArgumentCollection arguments = new ArgumentCollection(new string[] { "baudrate", "parity", "databits", "stopbits",
          "repeatfile", "logfile", "logincomingonly", "showascii", "notime", "gaptolerance", "continuousmode", "nogui", "service" });
         static readonly string? version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3);
-        static long lastTimeReceved = 0;
+        static long lastTimeReceived = 0;
         static bool repeaterEnabled = false;
         static bool repeaterUseHex = false;
         static readonly Dictionary<string, string> repeaterStringMap = new Dictionary<string, string>();
@@ -182,9 +182,9 @@ namespace SerialMonitor
 
             arg = arguments.GetArgument("notime");
             if (arg.Enabled)
-                setting.ShowTime = false;
+                setting.ShowTime = LogRecord.ShowTime = false;
             else
-                setting.ShowTime = Config.LoadSetting(Config.SETTING_SHOWTIME) != "0";
+                setting.ShowTime = LogRecord.ShowTime = Config.LoadSetting(Config.SETTING_SHOWTIME) != "0";
 
             arg = arguments.GetArgument("showascii");
             if (arg.Enabled)
@@ -336,7 +336,11 @@ namespace SerialMonitor
                 UI.PrintAsHexToLogView = !setting.ShowAscii;
                 UI.ActionHelp = () => { PrintHelp(); };
                 UI.ActionPrint = (print) => { pausePrint = !print; };
-                UI.ActionPrintAsHex = (hex) => { setting.ShowAscii = !hex; };
+                UI.ActionPrintAsHex = (hex) =>
+                {
+                    setting.ShowAscii = !hex;
+                    Config.SaveSetting(setting.Port, setting.BaudRate, setting.Parity, setting.ShowTime, setting.ShowTimeGap, setting.ShowSentData, setting.ShowAscii);
+                };
                 UI.ActionOpenClose = (close) =>
                 {
                     pauseConnection = close;
@@ -516,10 +520,7 @@ namespace SerialMonitor
 
                     if (setting.ShowSentData)
                     {
-                        if (!setting.ShowTime)
-                            ConsoleWriteCommunication(LogRecordType.DataReceived, "\n" + line);
-                        else
-                            ConsoleWriteCommunication(LogRecordType.DataReceived, "\n" + DateTime.Now.TimeOfDay.ToString() + " " + line);
+                        ConsoleWriteCommunication(LogRecordType.DataSent, line);
                     }
                 }
                 catch (Exception ex)
@@ -909,32 +910,8 @@ namespace SerialMonitor
                 return;
             }
 
-            TimeSpan time = DateTime.Now.TimeOfDay;
-            bool applyGapTolerance = false;
-
-            // print time since last receive only if not disabled
-            if (lastTimeReceved > 0)
-            {
-                double sinceLastReceive = ((double)(time.Ticks - lastTimeReceved) / 10000);
-                applyGapTolerance = (gapToleranceEnable && sinceLastReceive <= gapTolerance);
-
-                if (setting.ShowTimeGap && (!gapToleranceEnable || !applyGapTolerance))
-                    ConsoleWriteCommunication(LogRecordType.Time, "\n+" + sinceLastReceive.ToString("F3") + " ms");
-            }
-
             // Write to output
             string line = "";
-
-            if (!applyGapTolerance)
-            {
-                if (setting.ShowTimeGap || setting.ShowTime)
-                    ConsoleWriteCommunication(LogRecordType.DataReceived, "\n");
-                if (setting.ShowTime)
-                    ConsoleWriteCommunication(LogRecordType.DataReceived, time.ToString());
-            }
-
-            if (setting.ShowTime || applyGapTolerance || !gapToleranceEnable)
-                ConsoleWriteCommunication(LogRecordType.DataReceived, " ");
 
             if (setting.ShowAscii)
                 line = ASCIIEncoding.ASCII.GetString(incoming, 0, byteCount);
@@ -943,7 +920,7 @@ namespace SerialMonitor
 
             ConsoleWriteCommunication(LogRecordType.DataReceived, line);
 
-            lastTimeReceved = time.Ticks;
+
 
             if (repeaterEnabled)
             {
@@ -976,17 +953,12 @@ namespace SerialMonitor
                 if (repeaterHexMap.TryGetValue(incoming, byteCount, out var answer))
                 {
                     var data = answer;
-
-                    if (!setting.ShowTime)
-                        ConsoleWriteCommunication(LogRecordType.DataSent, string.Join("\n ", Array.ConvertAll(data, x => $"0x{x:X2}")));
-                    else
-                        ConsoleWriteCommunication(LogRecordType.DataSent, "\n" + DateTime.Now.TimeOfDay.ToString() + " " + string.Join(" ", Array.ConvertAll(data, x => $"0x{x:X2}")));
-
+                    ConsoleWriteCommunication(LogRecordType.DataSent, string.Join(" ", Array.ConvertAll(data, x => $"0x{x:X2}")));
                     return data;
                 }
                 else
                 {
-                    ConsoleWriteLineNoTrace("\nRepeater: Unknown ask");
+                    ConsoleWriteCommunication(LogRecordType.Warning, "Repeater: Unknown ask");
                 }
             }
             else
@@ -996,17 +968,12 @@ namespace SerialMonitor
                 if (repeaterStringMap.ContainsKey(ask))
                 {
                     string answer = repeaterStringMap[ask];
-
-                    if (!setting.ShowTime)
-                        ConsoleWriteCommunication(LogRecordType.DataSent, "\n" + answer);
-                    else
-                        ConsoleWriteCommunication(LogRecordType.DataSent, "\n" + DateTime.Now.TimeOfDay.ToString() + " " + answer);
-
+                    ConsoleWriteCommunication(LogRecordType.DataSent, answer);
                     return ASCIIEncoding.ASCII.GetBytes(answer);
                 }
                 else
                 {
-                    ConsoleWriteLineNoTrace("Repeater: Unknown ask");
+                    ConsoleWriteCommunication(LogRecordType.Warning, "Repeater: Unknown ask");
                 }
             }
 
@@ -1117,56 +1084,83 @@ namespace SerialMonitor
         /// <summary>
         /// Print line that is involved in communication
         /// </summary>
-        /// <param name="type"></param>
-        /// <param name="message"></param>
+        /// <param name="type">Record type</param>
+        /// <param name="message">Message to log</param>
         private static void ConsoleWriteCommunication(LogRecordType type, string message)
         {
-            if (!pausePrint)
-            {
-                if (!continuousMode)
-                {
-                    var level = type == LogRecordType.Error ? TraceEventType.Error : TraceEventType.Information;
-
-                    UI.Write(message, type, level);
-                }
-                else if (!serviceMode)
-                {
-                    switch (type)
-                    {
-                        case LogRecordType.Time:
-                            Console.ForegroundColor = ConsoleColor.Magenta;
-                            break;
-                        case LogRecordType.ControlPinChanged:
-                            Console.ForegroundColor = ConsoleColor.Cyan;
-                            break;
-                        case LogRecordType.ControlPinOn:
-                            Console.ForegroundColor = ConsoleColor.Green;
-                            break;
-                        case LogRecordType.DataReceived:
-                            Console.ForegroundColor = ConsoleColor.Yellow;
-                            break;
-                        case LogRecordType.DataSent:
-                            Console.ForegroundColor = ConsoleColor.Green;
-                            break;
-                        case LogRecordType.Error:
-                            Console.ForegroundColor = ConsoleColor.Red;
-                            break;
-                        case LogRecordType.ControlPinOff:
-                        default:
-                            Console.ForegroundColor = ConsoleColor.White;
-                            break;
-                    }
-
-                    ConsoleWrite(message);
-                    Console.ResetColor();
-                }
-            }
-
             if (logfile)
             {
                 // log all received data or others if enabled
                 if (!logincomingonly || type == LogRecordType.DataReceived)
-                    TraceData(string.Format(message));
+                    TraceData($"{DateTime.Now.TimeOfDay} {message}");
+            }
+
+            if (pausePrint)
+            {
+                return;
+            }
+
+            if (!continuousMode)
+            {
+                var level = type switch
+                {
+                    LogRecordType.Error => TraceEventType.Error,
+                    LogRecordType.Warning => TraceEventType.Warning,
+                    _ => TraceEventType.Information
+                };
+                if (type == LogRecordType.DataReceived)
+                {
+                    TimeSpan time = DateTime.Now.TimeOfDay;
+                    bool applyGapTolerance = false;
+
+                    // print time since last receive only if not disabled
+                    if (lastTimeReceived > 0)
+                    {
+                        double sinceLastReceive = ((double)(time.Ticks - lastTimeReceived) / 10000);
+                        applyGapTolerance = (gapToleranceEnable && sinceLastReceive <= gapTolerance);
+
+                        if (setting.ShowTimeGap && (!gapToleranceEnable || !applyGapTolerance))
+                            UI.WriteLine($"+{sinceLastReceive:F3} ms", LogRecordType.Time, level);
+                    }
+
+                    lastTimeReceived = time.Ticks;
+                }
+                UI.WriteLine(message, type, level);
+            }
+            else if (!serviceMode)
+            {
+                Console.ForegroundColor = type switch
+                {
+                    LogRecordType.Time => ConsoleColor.Magenta,
+                    LogRecordType.ControlPinChanged => ConsoleColor.Cyan,
+                    LogRecordType.ControlPinOn => ConsoleColor.Green,
+                    LogRecordType.DataReceived => ConsoleColor.Yellow,
+                    LogRecordType.DataSent => ConsoleColor.Green,
+                    LogRecordType.Error => ConsoleColor.Red,
+                    _ => ConsoleColor.White,
+                };
+
+                if (type == LogRecordType.DataReceived)
+                {
+                    TimeSpan time = DateTime.Now.TimeOfDay;
+                    bool applyGapTolerance = false;
+
+                    // print time since last receive only if not disabled
+                    if (lastTimeReceived > 0)
+                    {
+                        double sinceLastReceive = ((double)(time.Ticks - lastTimeReceived) / 10000);
+                        applyGapTolerance = (gapToleranceEnable && sinceLastReceive <= gapTolerance);
+
+                        if (setting.ShowTimeGap && (!gapToleranceEnable || !applyGapTolerance))
+                            ConsoleWrite($"\n+{sinceLastReceive:F3} ms");
+                    }
+
+                    lastTimeReceived = time.Ticks;
+                }
+
+                ConsoleWrite($"\n{(setting.ShowTime ? $"{DateTime.Now.TimeOfDay} " : "")}{message}");
+
+                Console.ResetColor();
             }
         }
 

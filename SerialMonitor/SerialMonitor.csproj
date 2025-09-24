@@ -6,12 +6,12 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <Version>2.1.0.0</Version>
-    <FileVersion>2.2.0.25260</FileVersion>
+    <FileVersion>2.2.0.25266</FileVersion>
     <InformationalVersion>2.0.0.0.myversion</InformationalVersion>
     <AssemblyName>$(AssemblyName)</AssemblyName>
     <ErrorReport>none</ErrorReport>
     <PublishTrimmed>True</PublishTrimmed>
-    <AssemblyVersion>2.2.0.25260</AssemblyVersion>    
+    <AssemblyVersion>2.2.0.25266</AssemblyVersion>    
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">

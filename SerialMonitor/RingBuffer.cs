@@ -33,6 +33,19 @@ namespace SerialMonitor
                     filterSet = true;
                 }
             }
+            else if (typeof(T) == typeof(LogRecord))
+            {
+                if (string.IsNullOrEmpty(filter))
+                {
+                    filterSet = false;
+                }
+                else
+                {
+                    var segments = ToArraySegments();
+                    filtereddata = [.. segments.SelectMany(x => x.Where(x => ((x as LogRecord)!.Type != LogRecordType.DataSent && (x as LogRecord)!.Type != LogRecordType.DataReceived) || (x as LogRecord)!.Text.StartsWith(filter, StringComparison.OrdinalIgnoreCase)))];
+                    filterSet = true;
+                }
+            }
         }
 
         public int Capacity
@@ -121,6 +134,9 @@ namespace SerialMonitor
                 start = end;
             else
                 ++count;
+
+            if (filterSet)
+                FilterData();
         }
 
         public void Clear()
@@ -330,7 +346,6 @@ namespace SerialMonitor
         /// Set text for filtering lines
         /// </summary>
         /// <param name="filterText"></param>
-        /// <exception cref="NotImplementedException"></exception>
         internal void SetFilter(string? filterText)
         {
             filter = filterText;
