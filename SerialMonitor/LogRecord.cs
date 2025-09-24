@@ -18,11 +18,13 @@ namespace SerialMonitor
         ControlPinOff,
         Time,
         Error,
+        Warning,
         Default,
     }
 
     internal class LogRecord
     {
+        public static bool ShowTime { get; set; } = true;
         public LogRecord(string text, LogRecordType type, TraceEventType level)
         {
             Text = text;
@@ -47,6 +49,14 @@ namespace SerialMonitor
 
         public override string ToString()
         {
+            return Render();
+        }
+
+        private string Render()
+        {
+            if (ShowTime && (Type == LogRecordType.DataSent || Type == LogRecordType.DataReceived))
+                return $"{TimeStamp:HH:mm:ss.fff} {Text}";
+
             return Text;
         }
     }

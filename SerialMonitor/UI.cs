@@ -265,7 +265,7 @@ namespace SerialMonitor
                     setting.Port = port;
                     setting.BaudRate = baudrate;
                     setting.Parity = parity;
-                    setting.ShowTime = cbTime.Checked;
+                    setting.ShowTime = LogRecord.ShowTime = cbTime.Checked;
                     setting.ShowTimeGap = cbTimeGap.Checked;
                     setting.ShowSentData = cbSent.Checked;
 
