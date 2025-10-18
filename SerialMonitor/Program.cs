@@ -753,7 +753,7 @@ namespace SerialMonitor
 
                     int linesWithData = 0;
 
-                    Regex reg = new Regex(@"^(?!\s*$)(?:(0x[0-9A-Fa-f]{1,2})*|(\$\d+)*|(\@.+)*| )+$");
+                    Regex reg = new Regex(@"^(?!\s*$)(?:(0x[0-9A-Fa-f]{1,2})*|(\$\d+)*|(\@.+)*| |\t)+$");
                     // match hex string
                     if (reg.IsMatch(startLine))
                     {
