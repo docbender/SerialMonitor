@@ -339,15 +339,20 @@ namespace SerialMonitor
             }
             else if (keyEvent.Key == Key.F5)
             {
+                int dialogWidth = 70;
+                if (Application.Current.GetCurrentWidth(out var width) && width > 0)
+                    dialogWidth = width - 6;
+
                 // dialog
                 bool sendpressed = false;
                 var send = new Button("Send");
                 var cancel = new Button("Cancel");
-                var dialog = new Dialog("Send message", 50, 6, send, cancel);
+                var clear = new Button("Clear");
+                var dialog = new Dialog("Send message", dialogWidth, 15, send, cancel, clear);
                 var textField = new TextField()
                 {
                     X = Pos.Center(),
-                    Y = Pos.Center(),
+                    Y = 1,
                     Width = Dim.Fill() - 2
                 };
                 textField.KeyUp += (key) =>
@@ -359,6 +364,12 @@ namespace SerialMonitor
                     }
                 };
                 dialog.Add(textField);
+                var lbHistory = new Label("History:") { X = 1, Y = 3 };
+                var lvHistory = new ListView() { X = Pos.Center(), Y = 4, Height = Dim.Fill() - 2, Width = Dim.Fill() - 2 };
+                var history = Config.ReadCommandHistory();
+                lvHistory.SetSource(history);
+                lvHistory.ColorScheme = Colors.Menu;
+                dialog.Add(lbHistory, lvHistory);
 
                 send.Clicked += () =>
                 {
@@ -376,21 +387,55 @@ namespace SerialMonitor
                 {
                     Application.RequestStop();
                 };
+                clear.Clicked += () =>
+                {
+                    textField.Text = string.Empty;
+                };
+                lvHistory.SelectedItemChanged += (e) =>
+                {
+                    textField.Text = e.Value.ToString();
+                };
+                lvHistory.OpenSelectedItem += (e) =>
+                {
+                    textField.Text = e.Value.ToString();
+                    sendpressed = true;
+                    Application.RequestStop();
+                };
                 textField.SetFocus();
                 Application.Run(dialog);
 
                 if (sendpressed)
-                    ActionSend?.Invoke(textField.Text.ToString());
+                {
+                    var command = textField.Text.ToString();
+                    if (command == null)
+                        return false;
+                    if (history.Length == 0)
+                    {
+                        Config.WriteCommandHistory([command]);
+                    }
+                    else if (!history.Contains(command))
+                    {
+                        Config.WriteCommandHistory([command, .. history]);
+                    }
+                    else
+                    {
+                        Config.WriteCommandHistory([command, .. history.Where(x => !x.Equals(command))]);
+                    }
+                    ActionSend?.Invoke(command);
+                }
             }
             else if (keyEvent.Key == Key.F6)
             {
+                int dialogWidth = 70;
+                if (Application.Current.GetCurrentWidth(out var width) && width > 0)
+                    dialogWidth = width - 6;
                 // dialog
                 bool sendpressed = false;
                 var browse = new Button("Browse");
                 var send = new Button("Send") { Enabled = FileHistory.Count > 0 };
                 var cancel = new Button("Cancel");
                 var remove = new Button("Remove") { Enabled = FileHistory.Count > 0 };
-                var dialog = new Dialog("Send file", 50, 10, browse, send, remove, cancel);
+                var dialog = new Dialog("Send file", dialogWidth, 10, browse, send, remove, cancel);
 
                 var fileList = new ListView() { X = 1, Y = 1, Height = Dim.Fill() - 2, Width = Dim.Fill() - 2 };
                 fileList.SetSource(FileHistory);
@@ -504,6 +549,11 @@ namespace SerialMonitor
             return true;
         }
 
+        private static void LvHistory_SelectedItemChanged(ListViewItemEventArgs obj)
+        {
+            throw new NotImplementedException();
+        }
+
         private static void SetBottomMenuText()
         {
             menu.Text = $" F1 Help | F2 Setup | F3 {(!PrintAsHexToLogView ? "Hex " : "Text")} | F4 {(lines.Filtered ? "FILTER" : "Filter")} | F5 Send | F6 SendFile | F9 {(!RequestPortClose ? "Close" : "Open ")} | F11 RTS | F12 DTR | ^P {(!PrintToLogView ? "Print" : "Pause")} | ^Q Exit";
@@ -565,7 +615,7 @@ namespace SerialMonitor
                 logView.MoveDown();
         }
 
-        private static void WriteInternally(string message,LogRecordType type, TraceEventType level)
+        private static void WriteInternally(string message, LogRecordType type, TraceEventType level)
         {
             if (!PrintToLogView)
                 return;

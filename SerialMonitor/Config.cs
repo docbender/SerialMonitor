@@ -16,6 +16,7 @@ namespace SerialMonitor
     class Config
     {
         const string CONFIG_FILE = "serialmonitor.cfg";
+        const string HISTORY_FILE = "serialmonitor.hist";
         const string START_ARGUMENTS = "StartArgs";
         const string START_ARGUMENTS_REGEX = "(" + START_ARGUMENTS + "=)([^\n]*)";
         const string HISTORY = "CommandHistory";
@@ -24,13 +25,14 @@ namespace SerialMonitor
         const string FILE_LIST_REGEX = "(" + FILE_LIST + "=)([^\n]*)";
         public const string SETTING_PORT = "Port";
         public const string SETTING_BAUDRATE = "BaudRate";
-        public const string SETTING_PARITY = "Parity";        
+        public const string SETTING_PARITY = "Parity";
         public const string SETTING_SHOWTIME = "ShowTime";
         public const string SETTING_SHOWTIMEGAP = "ShowTimeGap";
         public const string SETTING_SHOWSENTDATA = "ShowSentData";
-        public const string SETTING_SHOWASCII = "ShowAscii";        
+        public const string SETTING_SHOWASCII = "ShowAscii";
 
-        static readonly string filePath = Path.Combine(Directory.GetCurrentDirectory(), CONFIG_FILE);
+        static readonly string ConfigFilePath = Path.Combine(Directory.GetCurrentDirectory(), CONFIG_FILE);
+        static readonly string CommandHistoryFilePath = Path.Combine(Directory.GetCurrentDirectory(), HISTORY_FILE);
 
         /// <summary>
         /// Save started parameters
@@ -101,7 +103,7 @@ namespace SerialMonitor
         {
             try
             {
-                using FileStream fs = new FileStream(filePath, FileMode.Create, FileAccess.Write);
+                using FileStream fs = new FileStream(ConfigFilePath, FileMode.Create, FileAccess.Write);
                 using (StreamWriter sw = new StreamWriter(fs, Encoding.UTF8))
                 {
                     sw.Write(configuration);
@@ -252,11 +254,11 @@ namespace SerialMonitor
         {
             string cfg = "";
 
-            if (File.Exists(filePath))
+            if (File.Exists(ConfigFilePath))
             {
                 try
                 {
-                    using FileStream fs = new FileStream(filePath, FileMode.Open, FileAccess.Read);
+                    using FileStream fs = new FileStream(ConfigFilePath, FileMode.Open, FileAccess.Read);
                     if (fs.Length > 0)
                     {
                         using TextReader sr = new StreamReader(fs, Encoding.UTF8);
@@ -275,6 +277,37 @@ namespace SerialMonitor
             }
 
             return cfg;
+        }
+
+        public static string[] ReadCommandHistory()
+        {
+            if (File.Exists(CommandHistoryFilePath))
+            {
+                try
+                {
+                    return File.ReadAllLines(CommandHistoryFilePath);
+                }
+                catch (FileNotFoundException)
+                {
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error while open the history file. {ex}");
+                }
+            }
+            return [];
+        }
+
+        public static void WriteCommandHistory(string[] lines)
+        {
+            try
+            {
+                File.WriteAllLines(CommandHistoryFilePath, lines);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error write into the history file. {ex}");
+            }
         }
     }
 }
