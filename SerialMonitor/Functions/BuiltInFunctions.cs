@@ -14,7 +14,7 @@ namespace SerialMonitor.Functions
 {
     internal class BuiltInFunctions
     {
-        public static readonly string[] Available = [nameof(Crc16), nameof(Sum), nameof(Rand)];
+        public static readonly string[] Available = [nameof(Crc8), nameof(Crc16), nameof(Sum), nameof(Rand)];
         private static readonly Regex functionRegex = new Regex(@"^(\w+)(\[(\d*)\.{2}(\d*)\])?$", RegexOptions.Compiled);
 
         public static bool IsAvailable(string functionName)
@@ -40,7 +40,9 @@ namespace SerialMonitor.Functions
             int start = match.Groups[2].Success && match.Groups[3].Success && match.Groups[3].Value.Length > 0 ? int.Parse(match.Groups[3].Value) : 0;
             int end = match.Groups[2].Success && match.Groups[4].Success && match.Groups[4].Value.Length > 0 ? int.Parse(match.Groups[4].Value) : int.MaxValue;
 
-            if (f.Equals("Crc16"))
+            if (f.Equals("Crc8"))
+                return new Crc8(position, start, end);
+            else if (f.Equals("Crc16"))
                 return new Crc16(position, start, end);
             else if (f.Equals("Sum"))
                 return new Sum(position, start, end);

@@ -22,6 +22,7 @@ Program isn't serial port sniffer so can't monitor port that is already open by 
 * **Display data with timestamp or with gap between messages** - Time between received data messages is displayed (in miliseconds). In addition to the printing on the screen it allows write everything (or just communication) to a specified file.
 * **Log communication into the file**
 * **Pause data receive** - In GUI mode printing of received data can be temporarily paused for peaceful data analysis.
+* **Filter** - In GUI mode displayed data can be filtered.
 * **Send files** - Not only manually entered data can be sent, but also a prepared data file.
 * **Manually control RTS and DTR pins** - In GUI mode it is possible to see the pins status and also control output pins.
 * **Emulate serial device** - Program allows response to sender for specific message. This could be used for simple simulation of some device.
@@ -40,6 +41,7 @@ Inside message functions could be used. The function is represented by '@' follo
 
 | Name  | Description | Example |
 |-------|-------------|---------|
+| Crc8  | Compute CRC8 from all bytes in a packet | 0x00 0xAA @crc8 |
 | Crc16 | Compute CRC16 from all bytes in a packet | 0x00 0xAA @crc16 |
 | Rand  | Generate random byte between 0-255. Value range can be specified.  | 0x00 0xAA @rand[1..100] |
 | Sum   | Compute checksum from bytes in a packet. The first and the last packet byte can be specified.  | 0x03 0x00 0xAA @sum[1..] |

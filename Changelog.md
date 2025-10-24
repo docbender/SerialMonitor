@@ -1,6 +1,13 @@
 ﻿Changelog
 =========
 
+2.2.0 / 22.10.2025
+------------------
+
+- Data filtering feature  
+- History of sent data through send dialog
+- Added CRC8 function
+
 2.1.0 / 2.9.2025
 ------------------
 

@@ -1,18 +1,51 @@
-﻿using System.Collections;
+﻿using System;
+using System.Collections;
 
 namespace SerialMonitor
 {
-    public class RingBuffer<T> : IEnumerable<T>,IList
+    public class RingBuffer<T> : IEnumerable<T>, IList
     {
         private readonly T[] data;
-
+        private T[] filtereddata;
         private int start = 0;
         private int end = 0;
         private int count = 0;
+        private bool filterSet = false;
+        private string? filter = string.Empty;
 
         public RingBuffer(int capacity)
         {
             data = new T[capacity];
+        }
+
+        private void FilterData()
+        {
+            if (typeof(T) == typeof(string))
+            {
+                if (string.IsNullOrEmpty(filter))
+                {
+                    filterSet = false;
+                }
+                else
+                {
+                    var segments = ToArraySegments();
+                    filtereddata = [.. segments.SelectMany(x => x.Where(x => (x as string)!.StartsWith(filter, StringComparison.OrdinalIgnoreCase)))];
+                    filterSet = true;
+                }
+            }
+            else if (typeof(T) == typeof(LogRecord))
+            {
+                if (string.IsNullOrEmpty(filter))
+                {
+                    filterSet = false;
+                }
+                else
+                {
+                    var segments = ToArraySegments();
+                    filtereddata = [.. segments.SelectMany(x => x.Where(x => ((x as LogRecord)!.Type != LogRecordType.DataSent && (x as LogRecord)!.Type != LogRecordType.DataReceived) || (x as LogRecord)!.Text.StartsWith(filter, StringComparison.OrdinalIgnoreCase)))];
+                    filterSet = true;
+                }
+            }
         }
 
         public int Capacity
@@ -27,6 +60,8 @@ namespace SerialMonitor
         {
             get
             {
+                if (filterSet)
+                    return filtereddata.Length;
                 return count;
             }
         }
@@ -35,10 +70,12 @@ namespace SerialMonitor
         {
             get
             {
+                if (filterSet)
+                    return filtereddata.Length == 0;
                 return Count == 0;
             }
         }
-        
+
         public T Last
         {
             get
@@ -65,7 +102,7 @@ namespace SerialMonitor
 
         public object SyncRoot => null;
 
-        object? IList.this[int index] { get => this[index]; set => this[index]= (T?)value; }
+        object? IList.this[int index] { get => this[index]; set => this[index] = (T?)value; }
 
         public T this[int index]
         {
@@ -73,12 +110,16 @@ namespace SerialMonitor
             {
                 if (IsEmpty || index >= count)
                     throw new ArgumentOutOfRangeException();
+                if (filterSet)
+                    return filtereddata[index];
                 return data[InternalIndex(index)];
             }
             set
             {
                 if (IsEmpty || index >= count)
                     throw new ArgumentOutOfRangeException();
+                if (filterSet)
+                    filtereddata[index] = value;
                 data[InternalIndex(index)] = value;
             }
         }
@@ -88,18 +129,21 @@ namespace SerialMonitor
             data[end] = item;
             if (++end == Capacity)
                 end = 0;
- 
-            if (count==Capacity)            
-                start = end;            
+
+            if (count == Capacity)
+                start = end;
             else
-                ++count;            
+                ++count;
+
+            if (filterSet)
+                FilterData();
         }
 
         public void Clear()
         {
             start = 0;
             end = 0;
-            count = 0;            
+            count = 0;
         }
 
         public T[] ToArray()
@@ -107,7 +151,7 @@ namespace SerialMonitor
             T[] newArray = new T[Count];
             var segments = ToArraySegments();
             segments[0].CopyTo(newArray);
-            segments[1].CopyTo(newArray, segments[0].Count);            
+            segments[1].CopyTo(newArray, segments[0].Count);
             return newArray;
         }
 
@@ -159,7 +203,7 @@ namespace SerialMonitor
 
         private int OuterIndex(int internalIndex)
         {
-            return internalIndex - (internalIndex < start ? (Capacity-start) : start);
+            return internalIndex - (internalIndex < start ? (Capacity - start) : start);
         }
 
         // doing ArrayOne and ArrayTwo methods returning ArraySegment<T> as seen here: 
@@ -205,24 +249,61 @@ namespace SerialMonitor
 
         public int IndexOf(T item)
         {
-            for(int i=0;i<Capacity;i++)
+            if (filterSet)
             {
-                if (data[i].Equals(item))
+                for (int i = 0; i < filtereddata.Length; i++)
                 {
-                    return OuterIndex(i);
+                    if (filtereddata[i]!.Equals(item))
+                    {
+                        return i;
+                    }
                 }
             }
-
+            else
+            {
+                for (int i = 0; i < Capacity; i++)
+                {
+                    if (data[i] != null && data[i]!.Equals(item))
+                    {
+                        return OuterIndex(i);
+                    }
+                }
+            }
             return -1;
         }
 
         public bool Contains(object? value)
         {
-            for (int i = 0; i < Capacity; i++)
+            if (filterSet)
             {
-                if (data[i].Equals((T)value))
+                for (int i = 0; i < filtereddata.Length; i++)
                 {
-                    return true;
+                    if (value == null)
+                    {
+                        if (filtereddata[i] == null)
+                            return true;
+                    }
+                    else
+                    {
+                        if (filtereddata[i]!.Equals((T)value))
+                            return true;
+                    }
+                }
+            }
+            else
+            {
+                for (int i = 0; i < Capacity; i++)
+                {
+                    if (value == null)
+                    {
+                        if (data[i] == null)
+                            return true;
+                    }
+                    else
+                    {
+                        if (data[i] != null && data[i]!.Equals((T)value))
+                            return true;
+                    }
                 }
             }
 
@@ -231,7 +312,7 @@ namespace SerialMonitor
 
         public int IndexOf(object? value)
         {
-            if(value==null)
+            if (value == null)
                 return -1;
             return IndexOf((T)value);
         }
@@ -259,6 +340,32 @@ namespace SerialMonitor
         public void RemoveAt(int index)
         {
             throw new NotImplementedException();
+        }
+
+        /// <summary>
+        /// Set text for filtering lines
+        /// </summary>
+        /// <param name="filterText"></param>
+        internal void SetFilter(string? filterText)
+        {
+            filter = filterText;
+            FilterData();
+        }
+
+        /// <summary>
+        /// Filter is applied
+        /// </summary>
+        public bool Filtered
+        {
+            get { return filterSet; }
+        }
+
+        /// <summary>
+        /// Applied filter
+        /// </summary>
+        public string Filter
+        {
+            get { return filter ?? ""; }
         }
         #endregion
     }
